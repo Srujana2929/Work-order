@@ -27,43 +27,47 @@
 
   <!-- Login -->
   <section id="login-screen" class="login" hidden>
+    <div class="login__scene" aria-hidden="true"></div>
+    <!-- Abstract amber corner curves -->
+    <svg class="login__curves login__curves--tl" viewBox="0 0 400 400" aria-hidden="true" focusable="false">
+      <path d="M0 330A330 330 0 0 1 330 0"/><path d="M0 262A262 262 0 0 1 262 0"/><path d="M0 200A200 200 0 0 1 200 0"/>
+    </svg>
+    <svg class="login__curves login__curves--br" viewBox="0 0 400 400" aria-hidden="true" focusable="false">
+      <path d="M400 70A330 330 0 0 0 70 400"/><path d="M400 138A262 262 0 0 0 138 400"/><path d="M400 200A200 200 0 0 0 200 400"/>
+    </svg>
+
+    <!-- Line-art plant floor: meshing gears, a pressure gauge, a conveyor -->
+    <svg class="login__art" viewBox="0 0 640 520" aria-hidden="true" focusable="false">
+      <g transform="translate(440 170)"><g class="lg-gear">
+        <polygon points="79.1,-12.2 91.6,-8.3 91.6,8.3 79.1,12.2 78.5,15.5 88.9,23.5 83.2,39.2 70.1,38.5 68.4,41.4 75.5,52.5 64.8,65.3 52.7,60.2 50.1,62.3 53.0,75.2 38.6,83.5 28.9,74.6 25.8,75.7 24.1,88.8 7.7,91.7 1.7,80.0 -1.7,80.0 -7.7,91.7 -24.1,88.8 -25.8,75.7 -28.9,74.6 -38.6,83.5 -53.0,75.2 -50.1,62.3 -52.7,60.2 -64.8,65.3 -75.5,52.5 -68.4,41.4 -70.1,38.5 -83.2,39.2 -88.9,23.5 -78.5,15.5 -79.1,12.2 -91.6,8.3 -91.6,-8.3 -79.1,-12.2 -78.5,-15.5 -88.9,-23.5 -83.2,-39.2 -70.1,-38.5 -68.4,-41.4 -75.5,-52.5 -64.8,-65.3 -52.7,-60.2 -50.1,-62.3 -53.0,-75.2 -38.6,-83.5 -28.9,-74.6 -25.8,-75.7 -24.1,-88.8 -7.7,-91.7 -1.7,-80.0 1.7,-80.0 7.7,-91.7 24.1,-88.8 25.8,-75.7 28.9,-74.6 38.6,-83.5 53.0,-75.2 50.1,-62.3 52.7,-60.2 64.8,-65.3 75.5,-52.5 68.4,-41.4 70.1,-38.5 83.2,-39.2 88.9,-23.5 78.5,-15.5"/>
+        <circle r="56"/><circle r="22"/><circle r="8"/>
+        <path d="M0-56V-22M0 22V56M-56 0H-22M22 0H56"/>
+      </g></g>
+      <g transform="translate(545 258)"><g class="lg-gear lg-gear--rev">
+        <polygon points="44.8,-10.5 55.5,-7.6 55.5,7.6 44.8,10.5 44.0,13.3 51.8,21.2 44.2,34.3 33.5,31.5 31.5,33.5 34.3,44.2 21.2,51.8 13.3,44.0 10.5,44.8 7.6,55.5 -7.6,55.5 -10.5,44.8 -13.3,44.0 -21.2,51.8 -34.3,44.2 -31.5,33.5 -33.5,31.5 -44.2,34.3 -51.8,21.2 -44.0,13.3 -44.8,10.5 -55.5,7.6 -55.5,-7.6 -44.8,-10.5 -44.0,-13.3 -51.8,-21.2 -44.2,-34.3 -33.5,-31.5 -31.5,-33.5 -34.3,-44.2 -21.2,-51.8 -13.3,-44.0 -10.5,-44.8 -7.6,-55.5 7.6,-55.5 10.5,-44.8 13.3,-44.0 21.2,-51.8 34.3,-44.2 31.5,-33.5 33.5,-31.5 44.2,-34.3 51.8,-21.2 44.0,-13.3"/>
+        <circle r="16"/><circle r="6"/>
+      </g></g>
+      <g class="lg-gauge" transform="translate(250 250)">
+        <circle r="62"/><circle class="lg-soft" r="52"/>
+        <path class="lg-amber" d="M36.8-36.8A52 52 0 0 1 36.8 36.8"/>
+        <path d="M-36.8 36.8l7-7M-52 0h10M-36.8-36.8l7 7M0-52v10M36.8-36.8l-7 7M52 0h-10M36.8 36.8l-7-7"/>
+        <g class="lg-needle"><path d="M0 8V-42"/></g>
+        <circle class="lg-dot" r="4"/>
+        <path d="M-8 62v18h16v-18"/><path d="M-60 80h120"/>
+      </g>
+      <g class="lg-conveyor">
+        <rect x="70" y="420" width="540" height="44" rx="22"/>
+        <circle cx="92" cy="442" r="14"/><circle cx="210" cy="442" r="14"/><circle cx="330" cy="442" r="14"/><circle cx="450" cy="442" r="14"/><circle cx="588" cy="442" r="14"/>
+        <path d="M140 464v40M540 464v40M120 504h440"/>
+        <rect x="150" y="372" width="52" height="48" rx="3"/><rect x="286" y="386" width="40" height="34" rx="3"/>
+        <rect class="lg-amber" x="410" y="364" width="60" height="56" rx="3"/><path class="lg-amber" d="M410 384h60"/>
+      </g>
+    </svg>
+    <!-- Wide arcs sweeping from the hero across to the form: one shared background -->
+    <svg class="login__sweep" viewBox="0 0 1440 900" preserveAspectRatio="xMaxYMax slice" aria-hidden="true" focusable="false">
+      <path d="M700 900A640 640 0 0 1 1440 385"/><path d="M800 900A540 540 0 0 1 1440 492"/><path d="M900 900A440 440 0 0 1 1440 596"/>
+    </svg>
     <aside class="login__hero">
-      <!-- Abstract amber corner curves -->
-      <svg class="login__curves login__curves--tl" viewBox="0 0 400 400" aria-hidden="true" focusable="false">
-        <path d="M0 330A330 330 0 0 1 330 0"/><path d="M0 262A262 262 0 0 1 262 0"/><path d="M0 200A200 200 0 0 1 200 0"/>
-      </svg>
-      <svg class="login__curves login__curves--br" viewBox="0 0 400 400" aria-hidden="true" focusable="false">
-        <path d="M400 70A330 330 0 0 0 70 400"/><path d="M400 138A262 262 0 0 0 138 400"/><path d="M400 200A200 200 0 0 0 200 400"/>
-      </svg>
-
-      <!-- Line-art plant floor: meshing gears, a pressure gauge, a conveyor -->
-      <svg class="login__art" viewBox="0 0 640 520" aria-hidden="true" focusable="false">
-        <g transform="translate(440 170)"><g class="lg-gear">
-          <polygon points="79.1,-12.2 91.6,-8.3 91.6,8.3 79.1,12.2 78.5,15.5 88.9,23.5 83.2,39.2 70.1,38.5 68.4,41.4 75.5,52.5 64.8,65.3 52.7,60.2 50.1,62.3 53.0,75.2 38.6,83.5 28.9,74.6 25.8,75.7 24.1,88.8 7.7,91.7 1.7,80.0 -1.7,80.0 -7.7,91.7 -24.1,88.8 -25.8,75.7 -28.9,74.6 -38.6,83.5 -53.0,75.2 -50.1,62.3 -52.7,60.2 -64.8,65.3 -75.5,52.5 -68.4,41.4 -70.1,38.5 -83.2,39.2 -88.9,23.5 -78.5,15.5 -79.1,12.2 -91.6,8.3 -91.6,-8.3 -79.1,-12.2 -78.5,-15.5 -88.9,-23.5 -83.2,-39.2 -70.1,-38.5 -68.4,-41.4 -75.5,-52.5 -64.8,-65.3 -52.7,-60.2 -50.1,-62.3 -53.0,-75.2 -38.6,-83.5 -28.9,-74.6 -25.8,-75.7 -24.1,-88.8 -7.7,-91.7 -1.7,-80.0 1.7,-80.0 7.7,-91.7 24.1,-88.8 25.8,-75.7 28.9,-74.6 38.6,-83.5 53.0,-75.2 50.1,-62.3 52.7,-60.2 64.8,-65.3 75.5,-52.5 68.4,-41.4 70.1,-38.5 83.2,-39.2 88.9,-23.5 78.5,-15.5"/>
-          <circle r="56"/><circle r="22"/><circle r="8"/>
-          <path d="M0-56V-22M0 22V56M-56 0H-22M22 0H56"/>
-        </g></g>
-        <g transform="translate(545 258)"><g class="lg-gear lg-gear--rev">
-          <polygon points="44.8,-10.5 55.5,-7.6 55.5,7.6 44.8,10.5 44.0,13.3 51.8,21.2 44.2,34.3 33.5,31.5 31.5,33.5 34.3,44.2 21.2,51.8 13.3,44.0 10.5,44.8 7.6,55.5 -7.6,55.5 -10.5,44.8 -13.3,44.0 -21.2,51.8 -34.3,44.2 -31.5,33.5 -33.5,31.5 -44.2,34.3 -51.8,21.2 -44.0,13.3 -44.8,10.5 -55.5,7.6 -55.5,-7.6 -44.8,-10.5 -44.0,-13.3 -51.8,-21.2 -44.2,-34.3 -33.5,-31.5 -31.5,-33.5 -34.3,-44.2 -21.2,-51.8 -13.3,-44.0 -10.5,-44.8 -7.6,-55.5 7.6,-55.5 10.5,-44.8 13.3,-44.0 21.2,-51.8 34.3,-44.2 31.5,-33.5 33.5,-31.5 44.2,-34.3 51.8,-21.2 44.0,-13.3"/>
-          <circle r="16"/><circle r="6"/>
-        </g></g>
-        <g class="lg-gauge" transform="translate(250 250)">
-          <circle r="62"/><circle class="lg-soft" r="52"/>
-          <path class="lg-amber" d="M36.8-36.8A52 52 0 0 1 36.8 36.8"/>
-          <path d="M-36.8 36.8l7-7M-52 0h10M-36.8-36.8l7 7M0-52v10M36.8-36.8l-7 7M52 0h-10M36.8 36.8l-7-7"/>
-          <g class="lg-needle"><path d="M0 8V-42"/></g>
-          <circle class="lg-dot" r="4"/>
-          <path d="M-8 62v18h16v-18"/><path d="M-60 80h120"/>
-        </g>
-        <g class="lg-conveyor">
-          <rect x="70" y="420" width="540" height="44" rx="22"/>
-          <circle cx="92" cy="442" r="14"/><circle cx="210" cy="442" r="14"/><circle cx="330" cy="442" r="14"/><circle cx="450" cy="442" r="14"/><circle cx="588" cy="442" r="14"/>
-          <path d="M140 464v40M540 464v40M120 504h440"/>
-          <rect x="150" y="372" width="52" height="48" rx="3"/><rect x="286" y="386" width="40" height="34" rx="3"/>
-          <rect class="lg-amber" x="410" y="364" width="60" height="56" rx="3"/><path class="lg-amber" d="M410 384h60"/>
-        </g>
-      </svg>
-
       <div class="login__brand">
         <div class="brand-mark">WO</div>
         <div class="login__brand-text">
