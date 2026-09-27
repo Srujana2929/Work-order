@@ -13,6 +13,27 @@ const OPEN_STATUSES = "Pending,Assigned,In Progress,On Hold";
 const COUNT_FORMATS = { int: (n) => String(Math.round(n)), money: (n) => fmt.money(n) };
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
+// Chart.js paints with resolved colours, so they're re-read on every theme change.
+function chartColors() {
+  return {
+    labour: cssVar("--ink-2"), materials: cssVar("--amber"), text: cssVar("--ink-3"),
+    grid: cssVar("--line"), tooltip: cssVar("--tooltip-bg"), tooltipBorder: cssVar("--line-strong"),
+  };
+}
+
+function applyChartColors(chart) {
+  const c = chartColors();
+  const [labour, materials] = chart.data.datasets;
+  labour.backgroundColor = c.labour;
+  materials.backgroundColor = c.materials;
+  const { x, y } = chart.options.scales;
+  x.ticks.color = c.text;
+  y.ticks.color = c.text;
+  y.grid.color = c.grid;
+  chart.options.plugins.legend.labels.color = c.text;
+  Object.assign(chart.options.plugins.tooltip, { backgroundColor: c.tooltip, borderColor: c.tooltipBorder });
+}
+
 // Remember the chosen attention tab while navigating (in memory only).
 let attentionTab = null;
 
@@ -266,7 +287,7 @@ export default {
       }
       const Chart = window.Chart;
       Chart.defaults.font.family = cssVar("--font-body") || "Barlow, sans-serif";
-      Chart.defaults.color = cssVar("--ink-3");
+      const c = chartColors();
       const mono = { family: "IBM Plex Mono, monospace", size: 11 };
 
       // Stacked bars grow in on load, staggered left-to-right. Reduced motion: none.
@@ -283,8 +304,8 @@ export default {
         data: {
           labels: s.cost_by_month.map((m) => m.label.toUpperCase()),
           datasets: [
-            { label: "Labour", data: s.cost_by_month.map((m) => m.labour_cost), backgroundColor: cssVar("--ink-2"), stack: "c", borderRadius: 4, borderSkipped: false, maxBarThickness: 44 },
-            { label: "Materials", data: s.cost_by_month.map((m) => m.material_cost), backgroundColor: cssVar("--amber"), stack: "c", borderRadius: 4, borderSkipped: false, maxBarThickness: 44 },
+            { label: "Labour", data: s.cost_by_month.map((m) => m.labour_cost), backgroundColor: c.labour, stack: "c", borderRadius: 4, borderSkipped: false, maxBarThickness: 44 },
+            { label: "Materials", data: s.cost_by_month.map((m) => m.material_cost), backgroundColor: c.materials, stack: "c", borderRadius: 4, borderSkipped: false, maxBarThickness: 44 },
           ],
         },
         options: {
@@ -292,9 +313,9 @@ export default {
           maintainAspectRatio: false,
           interaction: { mode: "index", intersect: false },
           plugins: {
-            legend: { position: "top", align: "end", labels: { usePointStyle: true, pointStyle: "rectRounded", boxWidth: 10, boxHeight: 10, font: { family: "Barlow Condensed", size: 13, weight: 600 } } },
+            legend: { position: "top", align: "end", labels: { color: c.text, usePointStyle: true, pointStyle: "rectRounded", boxWidth: 10, boxHeight: 10, font: { family: "Barlow Condensed", size: 13, weight: 600 } } },
             tooltip: {
-              backgroundColor: cssVar("--rail"), padding: 10, cornerRadius: 8,
+              backgroundColor: c.tooltip, borderColor: c.tooltipBorder, borderWidth: 1, padding: 10, cornerRadius: 8,
               titleFont: { family: "Barlow Condensed", size: 13, weight: 600 }, bodyFont: mono, footerFont: { ...mono, weight: 600 },
               callbacks: {
                 label: (ctx) => ` ${ctx.dataset.label}: ${fmt.money(ctx.parsed.y)}`,
@@ -303,16 +324,28 @@ export default {
             },
           },
           scales: {
-            x: { stacked: true, grid: { display: false }, border: { display: false }, ticks: { font: { family: "Barlow Condensed", size: 12, weight: 600 } } },
-            y: { stacked: true, beginAtZero: true, grid: { color: cssVar("--line"), drawTicks: false }, border: { display: false }, ticks: { font: mono, padding: 8 } },
+            x: { stacked: true, grid: { display: false }, border: { display: false }, ticks: { color: c.text, font: { family: "Barlow Condensed", size: 12, weight: 600 } } },
+            y: { stacked: true, beginAtZero: true, grid: { color: c.grid, drawTicks: false }, border: { display: false }, ticks: { color: c.text, font: mono, padding: 8 } },
           },
         },
       }));
     }
 
+    // update("none") skips shared element options (bar colours), so do a full
+    // update with animation briefly disabled - the page cross-fade covers it.
+    const onTheme = () => charts.forEach((chart) => {
+      applyChartColors(chart);
+      const animation = chart.options.animation;
+      chart.options.animation = false;
+      chart.update();
+      chart.options.animation = animation;
+    });
+    window.addEventListener("themechange", onTheme);
+
     return {
       destroy() {
         alive = false;
+        window.removeEventListener("themechange", onTheme);
         charts.forEach((c) => c.destroy());
       },
     };

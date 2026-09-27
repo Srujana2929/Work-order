@@ -2,10 +2,11 @@
 import { api, setUnauthorizedHandler } from "./api.js";
 import { session, can, isAdmin } from "./session.js";
 import {
-  check, clearErrors, collect, esc, field, formValues, icons, initials, openModal,
+  APP_TITLE, check, clearErrors, collect, esc, field, formValues, icons, initials, openModal,
   setPage, showErrors, showServerError, toast, withBusy,
 } from "./ui.js";
 import { replayEnter, swapContent } from "./motion.js";
+import "./theme.js";
 import { closeMenus, initTopbar, refreshAlerts, renderUser, resetTopbar } from "./topbar.js";
 import dashboardView from "./views/dashboard.js";
 import workOrdersView from "./views/work-orders.js";
@@ -65,6 +66,7 @@ function showLogin() {
   el("view").innerHTML = "";
   el("page-title").textContent = "";
   el("page-crumb").innerHTML = "";
+  document.title = APP_TITLE;
   Object.values(ROUTES).forEach((r) => r.view.reset && r.view.reset());
   resetTopbar();
   document.getElementById("modal-root").innerHTML = "";

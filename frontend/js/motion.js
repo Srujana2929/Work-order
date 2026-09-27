@@ -96,7 +96,8 @@ export function renderRows(tbody, html, { highlight = null } = {}) {
       kept.innerHTML = n.innerHTML;
       kept._src = n._src;
       applyMorph(kept, snap);
-      kept.animate([{ backgroundColor: "#fbefd6" }, { backgroundColor: "rgba(251,239,214,0)" }], { duration: 300, easing: "ease-out" });
+      const wash = getComputedStyle(document.documentElement).getPropertyValue("--amber-wash").trim();
+      kept.animate([{ backgroundColor: wash }, { backgroundColor: "transparent" }], { duration: 300, easing: "ease-out" });
     }
     return { el: kept, isNew: false };
   });

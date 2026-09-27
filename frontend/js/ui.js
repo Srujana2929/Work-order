@@ -37,6 +37,8 @@ export function debounce(fn, ms = 300) {
 }
 
 /** Set the page heading and breadcrumb. crumbs: ["Label" | ["Label", "#/href"], ...] */
+export const APP_TITLE = "Work Order — Plant Maintenance Console";
+
 export function setPage(title, crumbs = []) {
   const titleEl = document.getElementById("page-title");
   if (titleEl.textContent !== title) {
@@ -46,7 +48,7 @@ export function setPage(title, crumbs = []) {
   document.getElementById("page-crumb").innerHTML = ["Plant console", ...crumbs]
     .map((c) => Array.isArray(c) ? (c[1] ? `<a href="${esc(c[1])}">${esc(c[0])}</a>` : esc(c[0])) : esc(c))
     .join(" / ");
-  document.title = `${title} · Maintenance Console`;
+  document.title = `${title} · Work Order`;
 }
 
 // ------------------------------------------------------------ badges
