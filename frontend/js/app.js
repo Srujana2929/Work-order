@@ -60,6 +60,7 @@ async function boot() {
 function showLogin() {
   session.user = null;
   closeMenus();
+  setNavOpen(false);
   unmountCurrent();
   // Nothing from the previous user may survive into the next session:
   // page content, remembered filters/tabs, alerts, search.
@@ -171,8 +172,36 @@ function renderRail() {
       <button type="button" data-action="logout">Sign out</button>
     </div>`;
   el("rail-user").querySelector('[data-action="logout"]').onclick = logout;
-  el("rail-user").querySelector('[data-action="password"]').onclick = openChangePassword;
+  el("rail-user").querySelector('[data-action="password"]').onclick = () => { setNavOpen(false); openChangePassword(); };
 }
+
+// ------------------------------------------------------------------ mobile nav drawer
+// Below 821px the rail collapses to a bar with a hamburger; nav + account
+// actions live in a slide-out drawer. Desktop never sees any of this.
+
+const mobileNav = window.matchMedia("(max-width: 820px)");
+
+function setNavOpen(open) {
+  const drawer = el("rail-drawer");
+  const toggle = el("nav-toggle");
+  open = open && mobileNav.matches;
+  document.body.classList.toggle("nav-open", open);
+  el("nav-backdrop").hidden = !open;
+  toggle.setAttribute("aria-expanded", String(open));
+  toggle.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+  // Closed drawer is off-screen on mobile: keep it out of the tab order there.
+  drawer.inert = mobileNav.matches && !open;
+  if (open) (drawer.querySelector(".nav-link.is-active") || drawer.querySelector("a, button"))?.focus();
+}
+
+el("nav-toggle").addEventListener("click", () => setNavOpen(!document.body.classList.contains("nav-open")));
+el("nav-backdrop").addEventListener("click", () => setNavOpen(false));
+el("nav").addEventListener("click", (e) => { if (e.target.closest(".nav-link")) setNavOpen(false); });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && document.body.classList.contains("nav-open")) { setNavOpen(false); el("nav-toggle").focus(); }
+});
+mobileNav.addEventListener("change", () => setNavOpen(false));
+setNavOpen(false);
 
 function tickClock() {
   const now = new Date();
@@ -247,6 +276,7 @@ window.addEventListener("api:activity", (e) => {
 });
 
 window.addEventListener("hashchange", route);
+window.addEventListener("hashchange", () => setNavOpen(false));
 initTopbar({ logout, changePassword: openChangePassword });
 
 // ------------------------------------------------------------------ change password
