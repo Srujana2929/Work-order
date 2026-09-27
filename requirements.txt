@@ -1,5 +1,16 @@
-# Railway (via Nixpacks) detects Python projects by finding a requirements.txt
-# at the repository root. The real dependency list lives in backend/requirements.txt
-# (kept there because backend/ is also a normal, self-contained Python project for
-# local development) - this file just points pip at it.
--r backend/requirements.txt
+# Railway's build only copies this root requirements.txt into the build
+# context at the pip-install step (backend/requirements.txt isn't available
+# yet at that point, even though the rest of the repo is present later) - so
+# this has to be the actual dependency list, not a -r pointer to the other
+# file. Keep this in sync with backend/requirements.txt (used for local dev)
+# whenever either one changes.
+Flask==3.1.3
+Flask-SQLAlchemy==3.1.1
+SQLAlchemy==2.1.1
+PyMySQL==1.2.3
+# Needed by PyMySQL for MySQL 8's default caching_sha2_password auth.
+cryptography==50.0.1
+python-dotenv==1.2.3
+PyJWT==2.15.0
+# Production WSGI server (Flask's own dev server isn't safe for production).
+gunicorn==23.0.0
