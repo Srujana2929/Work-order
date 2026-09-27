@@ -193,45 +193,62 @@ button, input, select, textarea { font: inherit; color: inherit; }
 @keyframes pulse { 50% { opacity: .45; } }
 
 /* ---------- Login ----------
-   Split layout: a graphite marketing hero on the left (it stays dark in both
-   themes, like the nav rail) with amber corner curves and faded line-art of
-   the plant floor, and the sign-in card on the themed work surface on the
-   right. Entrance animations are <=300ms; the gear/needle idle loops are
-   decorative and switch off under prefers-reduced-motion. */
+   Desktop: one continuous graphite scene (dark in both themes, like the nav
+   rail). Glows, the dot grid, the corner curves, the sweeping arcs and the
+   plant-floor line-art are page-level layers shared by the marketing copy on
+   the left and the sign-in form on the right, so there is no seam or floating
+   card between them. Mobile (<=900px): the hero and scene layers are hidden
+   and the form sits in a themed card, as before.
+   Entrance animations are <=300ms; the gear/needle idle loops are decorative
+   and switch off under prefers-reduced-motion. */
 .login {
   --hero-amber: #f5a623;
+  position: relative; isolation: isolate; overflow: hidden;
   min-height: 100%;
   display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
   background: var(--paper);
 }
 
-.login__hero {
-  position: relative; overflow: hidden; isolation: isolate;
-  display: flex; flex-direction: column; justify-content: space-between; gap: 40px;
-  padding: 36px clamp(28px, 5vw, 72px) 72px;
-  color: var(--rail-text);
+/* Shared scene layers (desktop only) */
+.login__scene, .login__curves, .login__art, .login__sweep { display: none; }
+.login__scene {
+  position: absolute; inset: 0; z-index: -2;
   background:
-    radial-gradient(38% 34% at 0% 0%, rgba(245, 166, 35, .22), transparent 72%),
-    radial-gradient(44% 40% at 100% 100%, rgba(245, 166, 35, .20), transparent 72%),
-    radial-gradient(50% 45% at 70% 40%, rgba(58, 110, 165, .10), transparent 70%),
-    linear-gradient(155deg, #1c1f23, var(--rail) 60%);
+    radial-gradient(28% 34% at 0% 0%, rgba(245, 166, 35, .22), transparent 72%),
+    radial-gradient(34% 44% at 100% 100%, rgba(245, 166, 35, .20), transparent 72%),
+    radial-gradient(30% 40% at 76% 50%, rgba(245, 166, 35, .09), transparent 70%),     /* behind the form */
+    radial-gradient(40% 40% at 42% 30%, rgba(58, 110, 165, .09), transparent 70%),
+    linear-gradient(155deg, #1c1f23, #121417 55%, #0f1113);
+}
+.login__scene::before {   /* dot grid over the whole page, densest in the middle */
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(circle at 1px 1px, rgba(236, 234, 228, .09) 1px, transparent 0) 0 0 / 24px 24px;
+  -webkit-mask-image: radial-gradient(80% 75% at 55% 50%, #000 20%, transparent 100%);
+          mask-image: radial-gradient(80% 75% at 55% 50%, #000 20%, transparent 100%);
 }
 
 /* Corner curves */
-.login__curves { position: absolute; z-index: -1; width: min(40%, 340px); height: auto; pointer-events: none; }
+.login__curves { position: absolute; z-index: -1; height: auto; pointer-events: none; }
 .login__curves path { fill: none; stroke: var(--hero-amber); stroke-linecap: round; }
 .login__curves path:nth-child(1) { stroke-width: 1; opacity: .35; }
 .login__curves path:nth-child(2) { stroke-width: 2; opacity: .55; }
 .login__curves path:nth-child(3) { stroke-width: 1; opacity: .25; stroke-dasharray: 3 7; }
-.login__curves--tl { top: 0; left: 0; }
-.login__curves--br { right: 0; bottom: 0; width: min(20%, 150px); }
+.login__curves--tl { top: 0; left: 0; width: min(24vw, 340px); }
+.login__curves--br { right: 0; bottom: 0; width: min(26vw, 360px); }
 
-/* Line-art illustration, faded into the background behind the copy */
+/* Long arcs that start under the hero copy and sweep up behind the form */
+.login__sweep { position: absolute; inset: 0; z-index: -1; width: 100%; height: 100%; pointer-events: none; }
+.login__sweep path { fill: none; stroke: var(--hero-amber); stroke-linecap: round; }
+.login__sweep path:nth-child(1) { stroke-width: 1; opacity: .16; }
+.login__sweep path:nth-child(2) { stroke-width: 1.5; opacity: .24; }
+.login__sweep path:nth-child(3) { stroke-width: 1; opacity: .14; stroke-dasharray: 3 8; }
+
+/* Line-art illustration: straddles the middle and fades into the form's glow */
 .login__art {
-  position: absolute; z-index: -1; right: -3%; top: 56px;
-  width: min(64%, 520px); height: auto; overflow: visible; pointer-events: none; opacity: .5;
-  -webkit-mask-image: radial-gradient(75% 70% at 65% 40%, #000 35%, transparent 100%);
-          mask-image: radial-gradient(75% 70% at 65% 40%, #000 35%, transparent 100%);
+  position: absolute; z-index: -1; left: 21%; top: 56px;
+  width: min(36vw, 540px); height: auto; overflow: visible; pointer-events: none; opacity: .5;
+  -webkit-mask-image: radial-gradient(70% 70% at 55% 42%, #000 35%, transparent 100%);
+          mask-image: radial-gradient(70% 70% at 55% 42%, #000 35%, transparent 100%);
 }
 .login__art * { fill: none; stroke: rgba(236, 234, 228, .30); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .login__art .lg-soft { stroke: rgba(236, 234, 228, .14); stroke-dasharray: 2 5; }
@@ -244,6 +261,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 @keyframes needle-idle { 0%, 100% { transform: rotate(40deg); } 50% { transform: rotate(32deg); } }
 @keyframes gear-spin   { to { transform: rotate(360deg); } }
 
+/* Hero copy */
+.login__hero {
+  position: relative;
+  display: flex; flex-direction: column; justify-content: space-between; gap: 40px;
+  padding: 36px clamp(28px, 5vw, 72px) 72px;
+  color: var(--rail-text);
+}
 .login__brand { display: flex; align-items: center; gap: 12px; }
 .login__brand-text { display: flex; flex-direction: column; font: 700 17px/1 var(--font-label); color: var(--rail-bright); text-transform: uppercase; letter-spacing: .05em; }
 .login__brand-sub { font-weight: 500; color: var(--rail-text); font-size: 13px; margin-top: 3px; letter-spacing: .14em; }
@@ -278,22 +302,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .login__features li:nth-child(2) { animation-delay: 170ms; }
 .login__features li:nth-child(3) { animation-delay: 200ms; }
 
-/* Sign-in side */
+/* Sign-in side. Base styles are the themed card (mobile); the desktop block
+   below dissolves the card into the shared scene. */
 .login__main {
-  position: relative; isolation: isolate; overflow: hidden;
-  display: grid; place-items: center; padding: 72px 24px 56px;
-}
-.login__main::before {        /* dot grid, fading out from the centre */
-  content: ""; position: absolute; inset: 0; z-index: -1;
-  background: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--ink) 11%, transparent) 1px, transparent 0) 0 0 / 22px 22px;
-  -webkit-mask-image: radial-gradient(60% 55% at 50% 50%, #000 20%, transparent 100%);
-          mask-image: radial-gradient(60% 55% at 50% 50%, #000 20%, transparent 100%);
-}
-.login__main::after {         /* warm glow behind the card */
-  content: ""; position: absolute; z-index: -1; left: 50%; top: 50%;
-  width: 560px; height: 560px; translate: -50% -50%; border-radius: 50%;
-  background: radial-gradient(closest-side, color-mix(in srgb, var(--amber) 14%, transparent), transparent);
-  pointer-events: none;
+  position: relative; display: grid; place-items: center; padding: 72px 24px 56px;
 }
 .login .login__theme { position: absolute; top: 20px; right: 20px; }
 
@@ -362,6 +374,25 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .login__foot { display: flex; align-items: center; gap: 8px; margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line-soft); color: var(--ink-3); font-size: 11px; letter-spacing: .04em; }
 .login__secure { flex: none; width: 16px; height: 16px; fill: none; stroke: var(--green); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
+/* Desktop: one shared scene. The form borrows the dark-theme tokens so the
+   inputs, labels, errors and toggle read correctly on graphite in both themes. */
+@media (min-width: 901px) {
+  .login {
+    --paper: #111315; --card: #1a1d21; --hover: rgba(236, 234, 228, .07);
+    --line: rgba(236, 234, 228, .16); --line-soft: rgba(236, 234, 228, .10); --line-strong: rgba(236, 234, 228, .28);
+    --ink: #eceae4; --ink-2: #b6bac1; --ink-3: #959ba4;
+    --amber: #f5a623; --amber-deep: #f7bb55;
+    --red: #f0705b; --red-wash: rgba(240, 112, 91, .12); --green: #4cbc86;
+    --input-bg: rgba(12, 14, 16, .55); --shadow-xs: 0 1px 2px rgba(0, 0, 0, .4);
+    color-scheme: dark;
+    background: #111315; color: var(--ink);
+  }
+  .login__scene, .login__curves, .login__art, .login__sweep { display: block; }
+  .login__panel { background: none; border: 0; border-radius: 0; box-shadow: none; padding: 0; width: min(400px, 100%); }
+  .login__panel::before { display: none; }
+  .login__foot { border-top-color: rgba(236, 234, 228, .10); }
+}
+
 @media (max-width: 1180px) {
   .login__features { grid-template-columns: minmax(0, 1fr); gap: 14px; }
 }
@@ -371,6 +402,19 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .login__main { min-height: 100vh; padding: 72px 16px 40px; }
   .login__panel { padding: 28px 22px 20px; }
   .login__mobile-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; font: 600 14px/1.2 var(--font-label); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+  /* Dot grid + warm glow behind the card, as before */
+  .login__main::before {
+    content: ""; position: absolute; inset: 0; z-index: -1;
+    background: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--ink) 11%, transparent) 1px, transparent 0) 0 0 / 22px 22px;
+    -webkit-mask-image: radial-gradient(60% 55% at 50% 50%, #000 20%, transparent 100%);
+            mask-image: radial-gradient(60% 55% at 50% 50%, #000 20%, transparent 100%);
+  }
+  .login__main::after {
+    content: ""; position: absolute; z-index: -1; left: 50%; top: 50%;
+    width: 560px; height: 560px; translate: -50% -50%; border-radius: 50%;
+    background: radial-gradient(closest-side, color-mix(in srgb, var(--amber) 14%, transparent), transparent);
+    pointer-events: none;
+  }
 }
 
 /* ---------- Theme toggle & theme switch ---------- */
