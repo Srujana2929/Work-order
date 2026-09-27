@@ -7,9 +7,10 @@
   <meta name="application-name" content="Work Order Management System">
   <meta name="apple-mobile-web-app-title" content="Work Orders">
   <meta name="theme-color" content="#16181b">
-  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
-  <link rel="icon" href="/assets/favicon-32.png" type="image/png" sizes="32x32">
-  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+  <link rel="icon" href="/favicon.ico?v=2" sizes="16x16 32x32 48x48">
+  <link rel="icon" href="/assets/favicon.svg?v=2" type="image/svg+xml">
+  <link rel="icon" href="/assets/favicon-32.png?v=2" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png?v=2" sizes="180x180">
   <script src="/js/theme-boot.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -151,6 +152,9 @@
   <!-- Application shell -->
   <div id="app" class="shell" hidden>
     <aside class="rail">
+      <button class="rail__burger" id="nav-toggle" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="rail-drawer">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
       <div class="rail__brand">
         <div class="brand-mark">WO</div>
         <div class="rail__brand-text">
@@ -158,8 +162,12 @@
           <span class="rail__brand-sub">Management System</span>
         </div>
       </div>
-      <nav class="rail__nav" id="nav"></nav>
-      <div class="rail__user" id="rail-user"></div>
+      <!-- Desktop: plain rail contents. Mobile (<=820px): slide-out drawer. -->
+      <div class="rail__drawer" id="rail-drawer">
+        <nav class="rail__nav" id="nav" aria-label="Main"></nav>
+        <div class="rail__user" id="rail-user"></div>
+      </div>
+      <div class="rail__backdrop" id="nav-backdrop" hidden></div>
     </aside>
 
     <main class="main">
