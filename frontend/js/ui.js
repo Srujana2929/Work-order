@@ -37,7 +37,7 @@ export function debounce(fn, ms = 300) {
 }
 
 /** Set the page heading and breadcrumb. crumbs: ["Label" | ["Label", "#/href"], ...] */
-export const APP_TITLE = "Work Order — Plant Maintenance Console";
+export const APP_TITLE = "Work Order Management System";
 
 export function setPage(title, crumbs = []) {
   const titleEl = document.getElementById("page-title");
@@ -45,10 +45,10 @@ export function setPage(title, crumbs = []) {
     titleEl.textContent = title;
     titleEl.classList.remove("title-in"); void titleEl.offsetWidth; titleEl.classList.add("title-in");
   }
-  document.getElementById("page-crumb").innerHTML = ["Plant console", ...crumbs]
+  document.getElementById("page-crumb").innerHTML = [APP_TITLE, ...crumbs]
     .map((c) => Array.isArray(c) ? (c[1] ? `<a href="${esc(c[1])}">${esc(c[0])}</a>` : esc(c[0])) : esc(c))
     .join(" / ");
-  document.title = `${title} · Work Order`;
+  document.title = `${title} · ${APP_TITLE}`;
 }
 
 // ------------------------------------------------------------ badges
