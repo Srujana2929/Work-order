@@ -76,8 +76,35 @@ function showLogin() {
   const form = el("login-form");
   form.reset();
   clearErrors(form);
-  setTimeout(() => form.elements.username.focus(), 50);
+  setReveal(false);
+  const remembered = storage.get(REMEMBER_KEY);
+  if (remembered) { form.elements.username.value = remembered; el("login-remember").checked = true; }
+  setTimeout(() => (remembered ? form.elements.password : form.elements.username).focus(), 50);
 }
+
+// "Remember me" only pre-fills the username on this device; it is not sent to the API.
+const REMEMBER_KEY = "wo.rememberUser";
+const storage = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch { /* storage blocked */ } },
+};
+
+function setReveal(show) {
+  const btn = el("login-reveal");
+  el("login-password").type = show ? "text" : "password";
+  btn.setAttribute("aria-pressed", String(show));
+  btn.setAttribute("aria-label", show ? "Hide password" : "Show password");
+}
+
+el("login-reveal").addEventListener("click", () => {
+  setReveal(el("login-password").type === "password");
+  el("login-password").focus();
+});
+
+el("login-forgot").addEventListener("click", (e) => {
+  e.preventDefault();
+  toast("Password resets are handled by an administrator - contact your Admin to reset it.");
+});
 
 el("login-form").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -94,6 +121,7 @@ el("login-form").addEventListener("submit", (e) => {
     try {
       const { user } = await api("/auth/login", { method: "POST", body: v });
       session.user = user;
+      storage.set(REMEMBER_KEY, el("login-remember").checked ? v.username : "");
       el("login-screen").hidden = true;
       showApp();
       toast(`Signed in as ${user.full_name}`);
