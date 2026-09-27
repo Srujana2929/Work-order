@@ -1,0 +1,5 @@
+# Railway (via Nixpacks) detects Python projects by finding a requirements.txt
+# at the repository root. The real dependency list lives in backend/requirements.txt
+# (kept there because backend/ is also a normal, self-contained Python project for
+# local development) - this file just points pip at it.
+-r backend/requirements.txt

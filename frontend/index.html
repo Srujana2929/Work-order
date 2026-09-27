@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Plant Maintenance Console</title>
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/app.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" defer></script>
+  <script type="module" src="/js/app.js"></script>
+</head>
+<body>
+  <!-- Boot screen, replaced once the session check finishes -->
+  <div id="boot" class="boot">
+    <div class="boot__mark">WO</div>
+    <div class="boot__text">Connecting to plant console…</div>
+  </div>
+
+  <!-- Login -->
+  <section id="login-screen" class="login" hidden>
+    <div class="login__panel">
+      <div class="login__brand">
+        <div class="brand-mark">WO</div>
+        <div>
+          <div class="login__title">Plant Maintenance Console</div>
+          <div class="login__sub">Work order management</div>
+        </div>
+      </div>
+      <form id="login-form" class="form" novalidate>
+        <div class="field">
+          <label for="login-username">Username or email</label>
+          <input id="login-username" name="username" autocomplete="username" required>
+          <div class="field__error"></div>
+        </div>
+        <div class="field">
+          <label for="login-password">Password</label>
+          <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+          <div class="field__error"></div>
+        </div>
+        <div class="form__error" role="alert"></div>
+        <button class="btn btn--primary btn--block" type="submit">Sign in</button>
+      </form>
+      <div class="login__foot mono">SECURE SESSION · 8 H SHIFT TOKEN</div>
+    </div>
+    <div class="login__stripe" aria-hidden="true"></div>
+  </section>
+
+  <!-- Application shell -->
+  <div id="app" class="shell" hidden>
+    <aside class="rail">
+      <div class="rail__brand">
+        <div class="brand-mark">WO</div>
+        <div class="rail__brand-text">
+          <span>Maintenance</span>
+          <span class="rail__brand-sub">Console</span>
+        </div>
+      </div>
+      <nav class="rail__nav" id="nav"></nav>
+      <div class="rail__user" id="rail-user"></div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <!-- Global search: work orders + machines, live results -->
+        <div class="gsearch" id="gsearch">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="gsearch-input" type="search" placeholder="Search work orders, machines…" autocomplete="off"
+                 aria-label="Search work orders and machines" aria-controls="gsearch-results" aria-expanded="false">
+          <kbd class="gsearch__kbd" aria-hidden="true">/</kbd>
+          <div class="dropdown gsearch__results" id="gsearch-results" role="listbox" hidden></div>
+        </div>
+        <div class="topbar__right">
+          <div class="clock mono" id="clock"></div>
+          <div class="menu-wrap">
+            <button class="icon-btn" id="bell" type="button" aria-label="Alerts" aria-haspopup="true" aria-expanded="false">
+              <svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+              <span class="icon-btn__dot" id="bell-dot" hidden></span>
+            </button>
+            <div class="dropdown dropdown--right bell-menu" id="bell-menu" hidden></div>
+          </div>
+          <div class="menu-wrap">
+            <button class="user-chip" id="user-chip" type="button" aria-haspopup="true" aria-expanded="false"></button>
+            <div class="dropdown dropdown--right user-menu" id="user-menu" hidden></div>
+          </div>
+        </div>
+        <div class="busy-bar" id="busy-bar" aria-hidden="true"></div>
+      </header>
+      <div class="page-head">
+        <div class="topbar__crumb" id="page-crumb"></div>
+        <h1 class="topbar__title" id="page-title"></h1>
+      </div>
+      <div class="view" id="view"></div>
+    </main>
+  </div>
+
+  <div id="modal-root"></div>
+  <div id="toast-root" class="toasts" aria-live="polite"></div>
+</body>
+</html>
