@@ -60,10 +60,10 @@ class Config:
     CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME", "").strip()
     CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY", "").strip()
     CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET", "").strip()
-    # Experimental AI photo check (optional): Claude compares a material photo
-    # with its logged name. Without a key the photo is shown with no AI hint.
-    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
-    PHOTO_CHECK_MODEL = os.getenv("PHOTO_CHECK_MODEL", "claude-opus-5-5").strip()
+    # Experimental AI photo check (optional): Google Gemini compares a material
+    # photo with its logged name. Without a key the photo is shown with no AI hint.
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+    PHOTO_CHECK_MODEL = os.getenv("PHOTO_CHECK_MODEL", "gemini-3.8-flash").strip()
     # Debug mode (interactive debugger + auto-reload) is OFF unless explicitly
     # requested - never turned on implicitly by FLASK_ENV.
     DEBUG = os.getenv("FLASK_DEBUG", "false").lower() == "true"

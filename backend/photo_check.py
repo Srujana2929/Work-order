@@ -1,9 +1,9 @@
-"""EXPERIMENTAL: ask Claude whether a material photo looks consistent with
-the material's logged name/part number.
+"""EXPERIMENTAL: ask Google Gemini whether a material photo looks consistent
+with the material's logged name/part number.
 
 This is a hint for the supervisor, never a gate: every outcome - including
-"not configured", errors, timeouts and refusals - still leaves the photo
-visible for the supervisor to approve or reject themselves.
+"not configured", errors, timeouts, rate limits and safety blocks - still
+leaves the photo visible for the supervisor to approve or reject themselves.
 
 What it can realistically do: tell an obvious match (a labelled seal kit box
 for "seal kit") from an obvious mismatch (a photo of a desk for "bearing").
@@ -12,13 +12,24 @@ parts apart, judge quantity, or know the photo was taken on this job. It
 also reads any text in the photo, so a printed label can sway it. Hence the
 three-way answer with "unclear" as the default when in doubt.
 
-Needs ANTHROPIC_API_KEY. PHOTO_CHECK_MODEL overrides the model.
+Needs GEMINI_API_KEY (Google AI Studio). PHOTO_CHECK_MODEL overrides the model.
+On Google's free tier, submitted content may be used by Google to improve
+its products - see README.
 """
 import json
+import urllib.error
+import urllib.request
 
 from flask import current_app
 
+DEFAULT_MODEL = "gemini-3.8-flash"
 VERDICTS = ("consistent", "unclear", "not_consistent")
+MAX_IMAGE_BYTES = 8 * 1024 * 1024
+DOWNLOAD_TIMEOUT = 10        # seconds, fetching the photo from Cloudinary
+API_TIMEOUT_MS = 25_000      # Gemini request; stays well inside gunicorn's 60 s
+# Finish reasons that mean Gemini declined to assess the content.
+BLOCKED = {"SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "IMAGE_SAFETY",
+           "IMAGE_PROHIBITED_CONTENT", "RECITATION", "IMAGE_RECITATION"}
 
 RESULT_SCHEMA = {
     "type": "object",
@@ -52,11 +63,11 @@ SYSTEM = (
 
 
 def is_configured():
-    return bool(current_app.config.get("ANTHROPIC_API_KEY"))
+    return bool(current_app.config.get("GEMINI_API_KEY"))
 
 
 def model_name():
-    return current_app.config.get("PHOTO_CHECK_MODEL") or "claude-opus-5-5"
+    return current_app.config.get("PHOTO_CHECK_MODEL") or DEFAULT_MODEL
 
 
 def _headline(verdict, name):
@@ -67,6 +78,16 @@ def _headline(verdict, name):
     return "unclear", f"It's not clear from this photo whether it shows “{name}” - please review."
 
 
+def _download(url):
+    """The stored photo's bytes (the size-limited JPEG delivery URL)."""
+    with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT) as resp:
+        data = resp.read(MAX_IMAGE_BYTES + 1)
+        mime = (resp.headers.get_content_type() or "image/jpeg")
+    if len(data) > MAX_IMAGE_BYTES:
+        raise ValueError("photo too large for the AI check")
+    return data, mime if mime.startswith("image/") else "image/jpeg"
+
+
 def check(image_url, material):
     """Run the check. Returns a dict for MaterialPhoto: ai_status, ai_note,
     ai_detail, ai_model. Never raises."""
@@ -75,14 +96,24 @@ def check(image_url, material):
         return {"ai_status": "unavailable", "ai_model": None, "ai_detail": None,
                 "ai_note": "AI check is not configured on this server - review the photo yourself."}
     try:
-        import anthropic
+        from google import genai
+        from google.genai import errors, types
     except ImportError:
-        current_app.logger.exception("anthropic package missing")
+        current_app.logger.exception("google-genai package missing")
         return {"ai_status": "unavailable", "ai_model": None, "ai_detail": None,
-                "ai_note": "AI check is unavailable (the 'anthropic' package is not installed) - "
+                "ai_note": "AI check is unavailable (the 'google-genai' package is not installed) - "
                            "review the photo yourself."}
 
     model = model_name()
+    failed = lambda note: {"ai_status": "error", "ai_model": model, "ai_detail": None,  # noqa: E731
+                           "ai_note": note + " Review the photo yourself."}
+
+    try:
+        image, mime = _download(image_url)
+    except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
+        current_app.logger.warning("Photo check: could not fetch %s: %s", image_url, exc)
+        return failed("The AI check couldn't load the photo.")
+
     facts = [f"Material name: {json.dumps(name, ensure_ascii=False)}"]
     if material.part_number:
         facts.append(f"Part number: {json.dumps(material.part_number, ensure_ascii=False)}")
@@ -90,45 +121,46 @@ def check(image_url, material):
     prompt = ("Logged material:\n" + "\n".join(facts) +
               "\n\nDoes the attached photo look consistent with this logged material?")
 
-    failed = lambda note: {"ai_status": "error", "ai_model": model, "ai_detail": None,  # noqa: E731
-                           "ai_note": note + " Review the photo yourself."}
     try:
-        client = anthropic.Anthropic(api_key=current_app.config["ANTHROPIC_API_KEY"],
-                                     timeout=25.0, max_retries=1)
-        response = client.beta.messages.create(
+        client = genai.Client(api_key=current_app.config["GEMINI_API_KEY"],
+                              http_options=types.HttpOptions(timeout=API_TIMEOUT_MS))
+        response = client.models.generate_content(
             model=model,
-            max_tokens=4000,
-            # On a policy refusal, the API re-runs the request on its default
-            # fallback model instead of failing outright.
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",
-            output_config={"effort": "low",
-                           "format": {"type": "json_schema", "schema": RESULT_SCHEMA}},
-            system=SYSTEM,
-            messages=[{"role": "user", "content": [
-                {"type": "image", "source": {"type": "url", "url": image_url}},
-                {"type": "text", "text": prompt},
-            ]}],
+            contents=[types.Part.from_bytes(data=image, mime_type=mime), prompt],
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM,
+                response_mime_type="application/json",
+                response_json_schema=RESULT_SCHEMA,
+                thinking_config=types.ThinkingConfig(thinking_level="LOW"),
+            ),
         )
-    except anthropic.APITimeoutError:
-        return failed("The AI check timed out.")
-    except anthropic.RateLimitError:
-        return failed("The AI check is busy right now (rate limited) - try again in a minute.")
-    except anthropic.BadRequestError as exc:
+    except errors.ClientError as exc:
+        if exc.code == 429:
+            return failed("The AI check is busy right now (free-tier rate limit) - try again in a minute.")
+        if exc.code in (401, 403):
+            current_app.logger.error("Photo check: GEMINI_API_KEY was rejected (%s)", exc.code)
+            return failed("The AI check isn't working (the server's API key was rejected).")
+        if exc.code == 404:
+            current_app.logger.error("Photo check: model %r not found - check PHOTO_CHECK_MODEL", model)
+            return failed("The AI check isn't working (model not available).")
         current_app.logger.warning("Photo check rejected: %s", exc)
         return failed("The AI check couldn't read this photo.")
-    except anthropic.AuthenticationError:
-        current_app.logger.error("Photo check: ANTHROPIC_API_KEY was rejected")
-        return failed("The AI check isn't working (the server's API key was rejected).")
-    except (anthropic.APIStatusError, anthropic.APIConnectionError) as exc:
-        current_app.logger.warning("Photo check failed: %s", exc)
+    except errors.ServerError as exc:
+        current_app.logger.warning("Photo check: Gemini server error %s", exc.code)
         return failed("The AI check couldn't run.")
+    except Exception as exc:     # timeouts and network errors come from the HTTP layer
+        current_app.logger.warning("Photo check failed: %s: %s", type(exc).__name__, exc)
+        timed_out = "timeout" in type(exc).__name__.lower()
+        return failed("The AI check timed out." if timed_out else "The AI check couldn't run.")
 
-    if response.stop_reason == "refusal":
+    feedback = response.prompt_feedback
+    candidate = response.candidates[0] if response.candidates else None
+    finish = getattr(candidate.finish_reason, "name", str(candidate.finish_reason)) if candidate and candidate.finish_reason else ""
+    if (feedback and feedback.block_reason) or finish in BLOCKED:
         return failed("The AI check declined to assess this photo.")
-    if response.stop_reason == "max_tokens":
+    if finish == "MAX_TOKENS":
         return failed("The AI check gave no answer.")
-    text = next((b.text for b in response.content if b.type == "text"), "")
+    text = response.text or ""
     try:
         result = json.loads(text)
         verdict = result["verdict"]
@@ -143,4 +175,4 @@ def check(image_url, material):
     reason = str(result.get("reason") or "").strip()
     detail = " ".join(p for p in (f"Sees: {seen}." if seen else "", reason) if p)
     return {"ai_status": status, "ai_note": note[:500], "ai_detail": detail[:500] or None,
-            "ai_model": (response.model or model)[:60]}
+            "ai_model": (getattr(response, "model_version", None) or model)[:60]}

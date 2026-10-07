@@ -171,9 +171,9 @@ these instructions).
   the work order. One rating per work order; kept if the work order is deleted. Averages show on the
   Users page and the technician's profile; technicians see their own average (sidebar + user menu),
   never individual comments.
-- **Material photos** need Cloudinary credentials, and the **AI check** needs an Anthropic API key. Both are
-  optional (see *Optional environment variables* below). Without Cloudinary the photo field is hidden;
-  without the Anthropic key photos show "No AI check". The AI check is an experimental hint for the
+- **Material photos** need Cloudinary credentials, and the **AI check** needs a Google Gemini API key. Both
+  are optional (see *Optional environment variables* below). Without Cloudinary the photo field is hidden;
+  without the Gemini key photos show "No AI check". The AI check is an experimental hint for the
   supervisor, never a gate: failures, timeouts and refusals all leave the photo reviewable.
 - **Staffing insight** (dashboard, Admin/Supervisor) is a fixed rule over the last 4 weeks of work
   orders: no model, no external service. The info button on the panel shows the full calculation.
@@ -245,8 +245,11 @@ on change). Leaving any of them out just switches that feature off.
 | `CLOUDINARY_CLOUD_NAME` | Material photos | Cloudinary console -> Dashboard -> Product Environment Credentials |
 | `CLOUDINARY_API_KEY` | Material photos | same place |
 | `CLOUDINARY_API_SECRET` | Material photos | same place (keep secret) |
-| `ANTHROPIC_API_KEY` | Experimental AI photo check | console.anthropic.com -> API Keys |
-| `PHOTO_CHECK_MODEL` | AI check model (optional) | defaults to `claude-opus-5-5` |
+| `GEMINI_API_KEY` | Experimental AI photo check | aistudio.google.com -> Get API key (free tier, no billing) |
+| `PHOTO_CHECK_MODEL` | AI check model (optional) | defaults to `gemini-3.8-flash` |
 
-Each AI check is one Claude request with one image (about 2,500 input tokens plus a short reasoned
-answer), roughly 1-2 US cents at Claude Opus 5.5 prices. A finished check isn't re-run.
+Each AI check is one Gemini request with one image. On Google's free tier it costs nothing, but it is
+rate-limited (a busy period shows "try again in a minute" on the photo) and Google states that free-tier
+content may be used to improve its products - i.e. material photos are shared with Google on those terms.
+If that matters, enable billing on the Google project (paid-tier content isn't used that way). A finished
+check isn't re-run, so repeat clicks don't use up quota.
