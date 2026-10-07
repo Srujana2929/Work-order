@@ -179,15 +179,20 @@ these instructions).
   without the Gemini key photos show "No AI check". The AI check is an experimental hint for the
   supervisor, never a gate: failures, timeouts and refusals all leave the photo reviewable.
 
-### AI assistant (experimental)
+### AI assistant "Torque" (experimental)
 
-Admins and Supervisors get an "Ask AI" bubble (bottom-right, every page). For each question the server
+Admins and Supervisors get an "Ask Torque" button (bottom-right, every page; the name is the
+`ASSISTANT_NAME` constant in `frontend/js/assistant.js`). For each question the server
 queries the database (`backend/assistant_context.py`: open/overdue work orders, per-technician workload
 and throughput, supervisor activity, 8-week trends, machines, recent spend) and sends that snapshot to
 Gemini with instructions to answer only from it and to say when the data can't answer. Staffing
 answers are advice with the figures and assumptions shown, not decisions. The conversation lives in the
 browser for the session only (cleared on sign-out or reload); nothing is stored server-side. Technicians
 don't see it. Needs `GEMINI_API_KEY`; without it the panel explains that it isn't configured.
+Answers are rendered with tables, WO-number chips that open the work order, the app's status and
+priority badges, and small SVG bar charts for workload comparisons; follow-up suggestions, copy and
+thumbs up/down (kept in the browser only) sit under each answer. Answers arrive in one piece and are
+revealed with a short typewriter effect (no streaming, so retries and the fallback model still apply).
 
 ### Login throttling (migration 003)
 
