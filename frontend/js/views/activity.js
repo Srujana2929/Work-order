@@ -130,7 +130,7 @@ export default {
       }
       let html = "";
       entries.forEach((e, i) => {
-        const day = (e.created_at || "").slice(0, 10);
+        const day = e.created_at ? fmt.date(e.created_at) : "";   // local day
         if (day !== lastDay) {
           html += `<div class="activity-day">${esc(dayLabel(day))}</div>`;
           lastDay = day;
@@ -160,7 +160,7 @@ export default {
 
     function item(e, i) {
       const cat = e.action.split(".")[0];
-      const time = (e.created_at || "").slice(11, 19);
+      const time = fmt.time(e.created_at, { seconds: true });
       const link = entityLink(e);
       return `<article class="activity-item fade-up" style="--i:${Math.min(i, 12)}">
         <div class="activity-item__time mono">${esc(time)}</div>

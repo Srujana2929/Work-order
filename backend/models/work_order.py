@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timezone
 
 from extensions import db
 from models.enums import MAINTENANCE_CATEGORIES, PRIORITIES, WORK_ORDER_STATUSES
@@ -104,8 +104,17 @@ def to_number(value):
     return float(value) if value is not None else None
 
 
-def to_iso(value):
-    return value.isoformat() if value is not None else None
+def to_iso(value, timespec="auto"):
+    """JSON form of a date or datetime. Datetimes are stored in UTC (the DB
+    session runs in UTC - see config), so they're sent as ISO 8601 with a "Z":
+    "2026-10-07T17:12:00Z". Plain dates stay "2026-10-07"."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is not None:
+            value = value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value.isoformat(timespec=timespec) + "Z"
+    return value.isoformat()
 
 
 def _user_summary(user):

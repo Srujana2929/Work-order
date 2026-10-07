@@ -49,6 +49,11 @@ class Config:
     SQLALCHEMY_ENGINE_OPTIONS = {
         "pool_pre_ping": True,   # drop dead connections before using them
         "pool_recycle": 280,     # stay under MySQL's wait_timeout
+        # Every DATETIME is stored and read in UTC, whatever the MySQL server's
+        # own time zone is (NOW(), CURRENT_TIMESTAMP and CURDATE() follow the
+        # session zone). The API marks them as UTC and the browser shows them
+        # in the viewer's local time - see models.work_order.to_iso.
+        "connect_args": {"init_command": "SET time_zone = '+00:00'"},
     }
     JSON_SORT_KEYS = False
     MAX_CONTENT_LENGTH = 1024 * 1024        # 1 MB request bodies; larger -> 413

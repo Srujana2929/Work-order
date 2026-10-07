@@ -287,7 +287,9 @@ the data snapshot (a few thousand tokens). When Gemini answers 503 (model overlo
 limit) - or 500/504 - the request is retried up to 3 times after 1, 2 and 4 seconds, then sent to the
 fallback model with the same retries (`backend/gemini_retry.py`); only if all of that fails does the user
 see the error with "Try again". It all stays inside a 50 s (assistant) / 42 s (photo check) budget so
-the worker's 60 s timeout is never hit. Tests: `backend\.venv\Scripts\python -m unittest discover -s backend/tests`. On Google's free tier this costs nothing, but it is
+the worker's 60 s timeout is never hit. Tests: `backend\.venv\Scripts\python -m unittest discover -s backend/tests` and
+`node --test frontend/tests/time.test.mjs`. Times are stored in UTC (the database session is pinned
+to UTC) and sent as ISO 8601 with a `Z`; the browser shows them in the viewer's own time zone. On Google's free tier this costs nothing, but it is
 rate-limited (busy periods show "try again in a minute") and Google states that free-tier content may be
 used to improve its products - i.e. material photos, and the work-order data the assistant sends
 (titles, people's names, workload figures), are shared with Google on those terms. If that matters,

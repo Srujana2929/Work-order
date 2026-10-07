@@ -10,14 +10,37 @@ export function esc(value) {
   return String(value).replace(/[&<>"']/g, (c) => ESCAPES[c]);
 }
 
+const pad2 = (n) => String(n).padStart(2, "0");
+/** A Date for a timestamp string, or null for a plain date / unparseable value. */
+function localDate(iso) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 export const fmt = {
   woId: (id) => "WO-" + String(id).padStart(5, "0"),
   money: (n) => (n === null || n === undefined) ? "—"
     : Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
   num: (n) => (n === null || n === undefined) ? "—"
     : Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 }),
-  date: (iso) => iso ? iso.slice(0, 10) : "—",
-  dateTime: (iso) => iso ? iso.slice(0, 16).replace("T", " ") : "—",
+  // Server timestamps are UTC ("2026-10-07T17:12:00Z"); these show them in the
+  // browser's own time zone. Plain dates ("2026-10-07") are shown as they are.
+  date: (iso) => {
+    if (!iso) return "—";
+    const d = localDate(iso);
+    return d ? `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` : String(iso).slice(0, 10);
+  },
+  dateTime: (iso) => {
+    const d = iso && localDate(iso);
+    if (!d) return iso ? String(iso).slice(0, 16).replace("T", " ") : "—";
+    return `${fmt.date(iso)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  },
+  time: (iso, { seconds = false } = {}) => {
+    const d = iso && localDate(iso);
+    if (!d) return "";
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", ...(seconds ? { second: "2-digit", hour12: false } : {}) });
+  },
   daysOverdue(iso) {
     if (!iso) return 0;
     const due = new Date(iso + "T00:00:00");

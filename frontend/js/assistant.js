@@ -6,7 +6,7 @@
 import { api } from "./api.js";
 import { motionOK } from "./motion.js";
 import { can, session } from "./session.js";
-import { esc, icons, priorityMeter, statusBadge, toast } from "./ui.js";
+import { esc, fmt, icons, priorityMeter, statusBadge, toast } from "./ui.js";
 
 /** The assistant's name, used everywhere it appears in the UI. */
 export const ASSISTANT_NAME = "Torque";
@@ -229,9 +229,10 @@ async function ask(raw, { retry = false } = {}) {
   }
 }
 
+// The header only says "Thinking…" (static); the one animated indicator is
+// the gauge in the message list.
 function setThinking(on) {
   if (!els) return;
-  els.avatar.classList.toggle("is-thinking", on);
   els.state.textContent = on ? "Thinking…" : "";
 }
 
@@ -277,7 +278,7 @@ function render({ typing = false, error = null } = {}) {
     return `<div class="ai-msg ai-msg--model${anim}" data-msg="${m.id}">
         <div class="ai-answer">${formatAnswer(m.text)}</div>
         <div class="ai-msg__foot">
-          <span class="ai-msg__meta">${m.asOf ? `Live data · ${esc(m.asOf.slice(11, 16))}` : ""}</span>
+          <span class="ai-msg__meta">${m.asOf ? `Live data · ${esc(fmt.time(m.asOf))}` : ""}</span>
           <span class="ai-actions">
             <button type="button" class="ai-act" data-ai="copy" title="Copy answer" aria-label="Copy answer">${ICON.copy}</button>
             <button type="button" class="ai-act" data-ai="up" title="Helpful" aria-label="Helpful" aria-pressed="${m.vote === "up"}">${ICON.up}</button>
@@ -288,8 +289,7 @@ function render({ typing = false, error = null } = {}) {
   }).join("");
   const tail = typing
     ? `<div class="ai-msg ai-msg--model ai-typing ai-in" role="status" aria-label="${esc(ASSISTANT_NAME)} is thinking">
-         <svg class="ai-sweep" viewBox="0 0 40 22" aria-hidden="true"><path d="M4 20a16 16 0 0 1 32 0"/><path class="ai-sweep__needle" d="M20 20 20 7"/></svg>
-         <span class="ai-dots"><i></i><i></i><i></i></span></div>`
+         <svg class="ai-sweep" viewBox="0 0 40 22" aria-hidden="true"><path d="M4 20a16 16 0 0 1 32 0"/><path class="ai-sweep__needle" d="M20 20 20 7"/></svg></div>`
     : error
       ? `<div class="ai-msg ai-msg--error ai-in" role="alert">${icons.alert}<div><p>${esc(friendly(error))}</p>
            <button class="btn btn--sm" type="button" data-ai="retry">Try again</button></div></div>`

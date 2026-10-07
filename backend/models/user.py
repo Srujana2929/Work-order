@@ -29,6 +29,7 @@ class User(db.Model):
 
     def to_dict(self):
         """Public representation - never includes password_hash."""
+        from models.work_order import to_iso
         return {
             "id": self.id,
             "full_name": self.full_name,
@@ -38,8 +39,8 @@ class User(db.Model):
             "department": self.department,
             "phone": self.phone,
             "is_active": self.is_active,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "created_at": to_iso(self.created_at),
+            "updated_at": to_iso(self.updated_at),
         }
 
     def __repr__(self):

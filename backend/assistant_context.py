@@ -15,7 +15,7 @@ from sqlalchemy.orm import joinedload
 
 from extensions import db
 from models import Machine, MaintenanceHistory, User, WorkOrder
-from models.work_order import FINISHED_STATUSES, to_number
+from models.work_order import FINISHED_STATUSES, to_iso, to_number
 from schema_check import ratings_available
 
 OPEN_LIMIT = 80          # open work orders listed individually
@@ -25,7 +25,7 @@ PRIORITY_RANK = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
 
 
 def _iso(dt):
-    return dt.isoformat(timespec="minutes") if hasattr(dt, "hour") else (dt.isoformat() if dt else None)
+    return to_iso(dt, timespec="minutes") if hasattr(dt, "hour") else to_iso(dt)
 
 
 def _wo_ref(wo_id):
@@ -33,7 +33,7 @@ def _wo_ref(wo_id):
 
 
 def build_snapshot():
-    now = db.session.execute(db.select(func.now())).scalar_one()   # database clock, like created_at
+    now = db.session.execute(db.select(func.now())).scalar_one()   # database clock (UTC), like created_at
     today = now.date()
     recent_start = now - timedelta(days=RECENT_DAYS)
     trend_start = now - timedelta(weeks=TREND_WEEKS)

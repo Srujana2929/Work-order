@@ -1441,6 +1441,17 @@ a.stat--link:active { transform: translateY(-1px); transition-duration: 80ms; }
 .btn--approve { color: var(--green); border-color: color-mix(in srgb, var(--green) 45%, transparent); }
 .btn--approve:hover { background: var(--green-wash); border-color: var(--green); }
 
+/* ---------- Sign-in password: only our own show/hide eye ----------
+   Edge/IE draw a native reveal (and clear) button, and Safari a credentials
+   autofill key, next to the custom toggle; hide them on fields that have one.
+   Password fields without our toggle (change password, user form) keep the
+   browser's reveal button, since it's their only one.
+   One rule per pseudo-element: a browser that doesn't recognise one of them
+   would otherwise drop the whole grouped rule. */
+.field__control--reveal input[type="password"]::-ms-reveal { display: none; }
+.field__control--reveal input[type="password"]::-ms-clear { display: none; }
+.field__control--reveal input::-webkit-credentials-auto-fill-button { visibility: hidden; display: none !important; pointer-events: none; }
+
 /* ---------- Sign-in: support contact ---------- */
 .login__contact {
   display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin-top: -8px;
@@ -1707,7 +1718,8 @@ a.stat--link:active { transform: translateY(-1px); transition-duration: 80ms; }
   70%, 100% { box-shadow: 0 0 0 14px transparent; }
 }
 
-/* Gauge avatar: rim, ticks, a red zone and a needle that sweeps while thinking. */
+/* Gauge avatar: rim, ticks, a red zone and a needle (still in the header;
+   the thinking indicator is the gauge sweep in the message list). */
 .tq-gauge { display: block; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; overflow: visible; }
 .tq-gauge__ticks { stroke-width: 1.4; opacity: .7; }
 .tq-gauge__arc { stroke: #b4321e; stroke-width: 2.2; }
@@ -1721,7 +1733,6 @@ a.stat--link:active { transform: translateY(-1px); transition-duration: 80ms; }
   transition: box-shadow var(--dur) var(--ease-out);
 }
 .tq-avatar .tq-gauge { width: 28px; height: 28px; }
-.tq-avatar.is-thinking .tq-gauge__needle { animation: tq-sweep 1.1s ease-in-out infinite alternate; }
 @keyframes tq-sweep { from { transform: rotate(-60deg); } to { transform: rotate(60deg); } }
 
 .has-ai .toasts { bottom: 86px; }
@@ -1842,15 +1853,10 @@ a.stat--link:active { transform: translateY(-1px); transition-duration: 80ms; }
 .ai-chip:active:not(:disabled) { transform: scale(.97); transition-duration: 60ms; }
 .ai-chip:disabled { opacity: .5; cursor: default; }
 
-/* Thinking: a small gauge sweep + dots */
-.ai-typing { display: inline-flex; align-items: center; gap: 10px; padding: 10px 14px; }
+/* Thinking: one animated element - a small gauge whose needle sweeps */
+.ai-typing { display: inline-flex; align-items: center; padding: 10px 14px; }
 .ai-sweep { width: 34px; height: 19px; fill: none; stroke: var(--line-strong); stroke-width: 2.4; stroke-linecap: round; overflow: visible; }
 .ai-sweep__needle { stroke: var(--amber); transform-box: view-box; transform-origin: 20px 20px; animation: tq-sweep 900ms ease-in-out infinite alternate; }
-.ai-dots { display: inline-flex; gap: 4px; }
-.ai-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); animation: ai-dot 1s ease-in-out infinite; }
-.ai-dots i:nth-child(2) { animation-delay: .15s; }
-.ai-dots i:nth-child(3) { animation-delay: .3s; }
-@keyframes ai-dot { 0%, 60%, 100% { opacity: .3; transform: none; } 30% { opacity: 1; transform: translateY(-3px); } }
 
 /* Typewriter: parts not reached yet / footer and follow-ups waiting for it */
 .tw-off { display: none !important; }
@@ -1904,9 +1910,8 @@ a.stat--link:active { transform: translateY(-1px); transition-duration: 80ms; }
 @media (prefers-reduced-motion: reduce) {
   .ai-fab:hover, .ai-fab:active, .ai-chip:hover, .ai-chip:active, .ai-send:hover, .ai-send:active,
   .ai-wo:hover, .ai-act:active { transform: none !important; }
-  .ai-dots i, .ai-sweep__needle, .tq-avatar.is-thinking .tq-gauge__needle, .ai-fab--pulse::after { animation: none !important; }
-  .ai-dots i { opacity: .6; }
-  .tq-avatar.is-thinking { box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 35%, transparent); }   /* still shows it's busy */
+  .ai-sweep__needle, .ai-fab--pulse::after { animation: none !important; }
+  .ai-sweep__needle { transform: rotate(35deg); }   /* still: the needle rests off-centre, the header still says "Thinking…" */
 }
 
 /* Reduced motion: state changes still happen, but instantly and without movement. */

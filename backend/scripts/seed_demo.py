@@ -21,7 +21,7 @@ import argparse
 import os
 import random
 import sys
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -177,7 +177,7 @@ def seed():
         return
     with_ratings = ratings_available()
     rng = random.Random(2026)
-    now = datetime.now().replace(microsecond=0)
+    now = datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None)   # stored times are UTC
     today = now.date()
     start_of_history = now - timedelta(days=70)
 
