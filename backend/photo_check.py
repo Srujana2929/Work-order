@@ -12,7 +12,8 @@ parts apart, judge quantity, or know the photo was taken on this job. It
 also reads any text in the photo, so a printed label can sway it. Hence the
 three-way answer with "unclear" as the default when in doubt.
 
-Needs GEMINI_API_KEY (Google AI Studio). PHOTO_CHECK_MODEL overrides the model.
+Needs GEMINI_API_KEY (Google AI Studio). PHOTO_CHECK_MODEL overrides the model and
+PHOTO_CHECK_FALLBACK_MODEL the one used when it stays overloaded (gemini_retry.py).
 On Google's free tier, submitted content may be used by Google to improve
 its products - see README.
 """
@@ -22,11 +23,15 @@ import urllib.request
 
 from flask import current_app
 
-DEFAULT_MODEL = "gemini-3.8-flash"
+import gemini_retry
+
+DEFAULT_MODEL = "gemini-3.5-flash-lite"
+DEFAULT_FALLBACK_MODEL = "gemini-3.1-flash-lite"
 VERDICTS = ("consistent", "unclear", "not_consistent")
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
 DOWNLOAD_TIMEOUT = 10        # seconds, fetching the photo from Cloudinary
-API_TIMEOUT_MS = 25_000      # Gemini request; stays well inside gunicorn's 60 s
+API_TIMEOUT_MS = 25_000      # one Gemini request
+BUDGET_S = 42                # all retries + fallback; with the download, inside gunicorn's 60 s
 # Finish reasons that mean Gemini declined to assess the content.
 BLOCKED = {"SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "IMAGE_SAFETY",
            "IMAGE_PROHIBITED_CONTENT", "RECITATION", "IMAGE_RECITATION"}
@@ -68,6 +73,10 @@ def is_configured():
 
 def model_name():
     return current_app.config.get("PHOTO_CHECK_MODEL") or DEFAULT_MODEL
+
+
+def fallback_model_name():
+    return current_app.config.get("PHOTO_CHECK_FALLBACK_MODEL", DEFAULT_FALLBACK_MODEL)
 
 
 def _headline(verdict, name):
@@ -121,11 +130,11 @@ def check(image_url, material):
     prompt = ("Logged material:\n" + "\n".join(facts) +
               "\n\nDoes the attached photo look consistent with this logged material?")
 
-    try:
+    def ask(use_model, timeout_ms):
         client = genai.Client(api_key=current_app.config["GEMINI_API_KEY"],
-                              http_options=types.HttpOptions(timeout=API_TIMEOUT_MS))
-        response = client.models.generate_content(
-            model=model,
+                              http_options=types.HttpOptions(timeout=timeout_ms))
+        return client.models.generate_content(
+            model=use_model,
             contents=[types.Part.from_bytes(data=image, mime_type=mime), prompt],
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM,
@@ -134,6 +143,10 @@ def check(image_url, material):
                 thinking_config=types.ThinkingConfig(thinking_level="LOW"),
             ),
         )
+
+    try:
+        response, used = gemini_retry.generate(ask, gemini_retry.models(model, fallback_model_name()),
+                                               budget_s=BUDGET_S, label="Photo check", max_timeout_ms=API_TIMEOUT_MS)
     except errors.ClientError as exc:
         if exc.code == 429:
             return failed("The AI check is busy right now (free-tier rate limit) - try again in a minute.")
@@ -141,12 +154,16 @@ def check(image_url, material):
             current_app.logger.error("Photo check: GEMINI_API_KEY was rejected (%s)", exc.code)
             return failed("The AI check isn't working (the server's API key was rejected).")
         if exc.code == 404:
-            current_app.logger.error("Photo check: model %r not found - check PHOTO_CHECK_MODEL", model)
+            current_app.logger.error("Photo check: model not found - check PHOTO_CHECK_MODEL / PHOTO_CHECK_FALLBACK_MODEL")
             return failed("The AI check isn't working (model not available).")
         current_app.logger.warning("Photo check rejected: %s", exc)
         return failed("The AI check couldn't read this photo.")
     except errors.ServerError as exc:
-        current_app.logger.warning("Photo check: Gemini server error %s", exc.code)
+        current_app.logger.warning("Photo check: Gemini server error %s after retries and fallback", exc.code)
+        if exc.code == 503:
+            return failed("The AI service is overloaded right now - try again in a minute.")
+        if exc.code == 504:
+            return failed("The AI check timed out.")
         return failed("The AI check couldn't run.")
     except Exception as exc:     # timeouts and network errors come from the HTTP layer
         current_app.logger.warning("Photo check failed: %s: %s", type(exc).__name__, exc)
@@ -175,4 +192,4 @@ def check(image_url, material):
     reason = str(result.get("reason") or "").strip()
     detail = " ".join(p for p in (f"Sees: {seen}." if seen else "", reason) if p)
     return {"ai_status": status, "ai_note": note[:500], "ai_detail": detail[:500] or None,
-            "ai_model": (getattr(response, "model_version", None) or model)[:60]}
+            "ai_model": (getattr(response, "model_version", None) or used)[:60]}

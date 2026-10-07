@@ -272,11 +272,17 @@ on change). Leaving any of them out just switches that feature off.
 | `CLOUDINARY_API_KEY` | Material photos | same place |
 | `CLOUDINARY_API_SECRET` | Material photos | same place (keep secret) |
 | `GEMINI_API_KEY` | AI photo check + AI assistant (both experimental) | aistudio.google.com -> Get API key (free tier, no billing) |
-| `PHOTO_CHECK_MODEL` | Photo check model (optional) | defaults to `gemini-3.8-flash` |
-| `ASSISTANT_MODEL` | Assistant model (optional) | defaults to `gemini-3.8-flash` |
+| `PHOTO_CHECK_MODEL` | Photo check model (optional) | defaults to `gemini-3.5-flash-lite` |
+| `PHOTO_CHECK_FALLBACK_MODEL` | Photo check model used when the main one stays overloaded (optional) | defaults to `gemini-3.1-flash-lite`; set it to the main model's name to disable |
+| `ASSISTANT_MODEL` | Assistant model (optional) | defaults to `gemini-3.5-flash-lite` |
+| `ASSISTANT_FALLBACK_MODEL` | Assistant fallback model (optional) | defaults to `gemini-3.1-flash-lite`; same rule |
 
 Each photo check is one Gemini request with one image; each assistant question is one request carrying
-the data snapshot (a few thousand tokens). On Google's free tier this costs nothing, but it is
+the data snapshot (a few thousand tokens). When Gemini answers 503 (model overloaded) or 429 (rate
+limit) - or 500/504 - the request is retried up to 3 times after 1, 2 and 4 seconds, then sent to the
+fallback model with the same retries (`backend/gemini_retry.py`); only if all of that fails does the user
+see the error with "Try again". It all stays inside a 50 s (assistant) / 42 s (photo check) budget so
+the worker's 60 s timeout is never hit. Tests: `backend\.venv\Scripts\python -m unittest discover -s backend/tests`. On Google's free tier this costs nothing, but it is
 rate-limited (busy periods show "try again in a minute") and Google states that free-tier content may be
 used to improve its products - i.e. material photos, and the work-order data the assistant sends
 (titles, people's names, workload figures), are shared with Google on those terms. If that matters,

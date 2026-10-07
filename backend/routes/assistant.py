@@ -4,12 +4,14 @@ POST /api/assistant/chat  {"messages": [{"role": "user"|"model", "text": "..."},
 The browser keeps the conversation for the session and sends it each time;
 nothing is stored server-side. For every question the server rebuilds a
 live data snapshot (assistant_context.py) and asks Gemini to answer from
-those numbers only. Uses GEMINI_API_KEY; ASSISTANT_MODEL overrides the model.
+those numbers only. Uses GEMINI_API_KEY; ASSISTANT_MODEL overrides the model and
+ASSISTANT_FALLBACK_MODEL the one used when it stays overloaded (gemini_retry.py).
 """
 import json
 
 from flask import Blueprint, current_app, jsonify
 
+import gemini_retry
 from assistant_context import build_snapshot
 from auth.rbac import current_user, permission_required
 from errors import APIError
@@ -17,10 +19,12 @@ from validation import get_json_body, reject_unknown_fields
 
 assistant_bp = Blueprint("assistant", __name__)
 
-DEFAULT_MODEL = "gemini-3.8-flash"
+DEFAULT_MODEL = "gemini-3.5-flash-lite"
+DEFAULT_FALLBACK_MODEL = "gemini-3.1-flash-lite"
 MAX_TURNS = 20             # most recent messages sent to the model
 MAX_CHARS = 2000           # per message
-API_TIMEOUT_MS = 40_000    # inside gunicorn's 60 s worker timeout
+API_TIMEOUT_MS = 40_000    # one Gemini request
+BUDGET_S = 50              # all retries + fallback together, inside gunicorn's 60 s worker timeout
 BLOCKED = {"SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "RECITATION"}
 
 SYSTEM = """You are the assistant built into a Work Order Management System for a maintenance team.
@@ -48,6 +52,10 @@ your ONLY source of facts about this organisation:
 
 def _model():
     return current_app.config.get("ASSISTANT_MODEL") or DEFAULT_MODEL
+
+
+def _fallback_model():
+    return current_app.config.get("ASSISTANT_FALLBACK_MODEL", DEFAULT_FALLBACK_MODEL)
 
 
 def _parse_messages(data):
@@ -99,15 +107,20 @@ def chat():
     user = current_user()
     system = SYSTEM.format(name=user.full_name, role=user.role, today=snapshot["today"],
                            data=json.dumps(snapshot, ensure_ascii=False, default=str, separators=(",", ":")))
-    model = _model()
-    try:
-        client = genai.Client(api_key=key, http_options=types.HttpOptions(timeout=API_TIMEOUT_MS))
-        response = client.models.generate_content(
-            model=model,
-            contents=[types.Content(role=role, parts=[types.Part.from_text(text=text)]) for role, text in turns],
+    contents = [types.Content(role=role, parts=[types.Part.from_text(text=text)]) for role, text in turns]
+
+    def ask(model, timeout_ms):
+        client = genai.Client(api_key=key, http_options=types.HttpOptions(timeout=timeout_ms))
+        return client.models.generate_content(
+            model=model, contents=contents,
             config=types.GenerateContentConfig(system_instruction=system,
                                                thinking_config=types.ThinkingConfig(thinking_level="LOW")),
         )
+
+    model = _model()
+    try:
+        response, model = gemini_retry.generate(ask, gemini_retry.models(model, _fallback_model()), budget_s=BUDGET_S,
+                                                label="Assistant", max_timeout_ms=API_TIMEOUT_MS)
     except errors.ClientError as exc:
         if exc.code == 429:
             raise APIError("The assistant is getting more requests than the free tier allows right now. "
@@ -116,12 +129,16 @@ def chat():
             current_app.logger.error("Assistant: GEMINI_API_KEY was rejected (%s)", exc.code)
             raise APIError("The assistant isn't working right now (the server's API key was rejected).", 502)
         if exc.code == 404:
-            current_app.logger.error("Assistant: model %r not found - check ASSISTANT_MODEL", model)
+            current_app.logger.error("Assistant: model not found - check ASSISTANT_MODEL / ASSISTANT_FALLBACK_MODEL")
             raise APIError("The assistant isn't working right now (model not available).", 502)
         current_app.logger.warning("Assistant request rejected: %s", exc)
         raise APIError("The assistant couldn't process that question. Try rephrasing it.", 502)
     except errors.ServerError as exc:
-        current_app.logger.warning("Assistant: Gemini server error %s", exc.code)
+        current_app.logger.warning("Assistant: Gemini server error %s after retries and fallback", exc.code)
+        if exc.code == 503:
+            raise APIError("The AI service is overloaded right now. Please try again in a minute.", 503)
+        if exc.code == 504:
+            raise APIError("The assistant took too long to answer. Please try again.", 504)
         raise APIError("The AI service had a problem answering. Please try again.", 502)
     except Exception as exc:       # timeouts / network errors from the HTTP layer
         current_app.logger.warning("Assistant failed: %s: %s", type(exc).__name__, exc)

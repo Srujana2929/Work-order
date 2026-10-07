@@ -63,9 +63,13 @@ class Config:
     # Experimental AI photo check (optional): Google Gemini compares a material
     # photo with its logged name. Without a key the photo is shown with no AI hint.
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-    PHOTO_CHECK_MODEL = os.getenv("PHOTO_CHECK_MODEL", "gemini-3.8-flash").strip()
+    PHOTO_CHECK_MODEL = os.getenv("PHOTO_CHECK_MODEL", "gemini-3.5-flash-lite").strip()
     # AI assistant chat (Admin/Supervisor) uses the same key.
-    ASSISTANT_MODEL = os.getenv("ASSISTANT_MODEL", "gemini-3.8-flash").strip()
+    ASSISTANT_MODEL = os.getenv("ASSISTANT_MODEL", "gemini-3.5-flash-lite").strip()
+    # Used when the main model is still overloaded / rate-limited after retries
+    # (gemini_retry.py). Set to the same name as the main model to disable.
+    PHOTO_CHECK_FALLBACK_MODEL = os.getenv("PHOTO_CHECK_FALLBACK_MODEL", "gemini-3.1-flash-lite").strip()
+    ASSISTANT_FALLBACK_MODEL = os.getenv("ASSISTANT_FALLBACK_MODEL", "gemini-3.1-flash-lite").strip()
     # Debug mode (interactive debugger + auto-reload) is OFF unless explicitly
     # requested - never turned on implicitly by FLASK_ENV.
     DEBUG = os.getenv("FLASK_DEBUG", "false").lower() == "true"
