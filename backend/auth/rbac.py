@@ -53,7 +53,8 @@ PERMISSIONS = {
     "machines:log_notes":      {SUPERVISOR, TECHNICIAN},  # manual history notes
     # Dashboard (technicians see figures for their own work only)
     "dashboard:view":          {SUPERVISOR, TECHNICIAN},
-    "dashboard:staffing":      {SUPERVISOR},            # staffing insight panel
+    # AI assistant (staffing and planning questions are a supervisor's call)
+    "assistant:use":           {SUPERVISOR},
     # Activity / audit log
     "audit:view":              set(),                   # Admin only
 }

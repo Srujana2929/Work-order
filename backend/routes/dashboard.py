@@ -6,16 +6,14 @@ maintenance history and counted in the month the work was completed (plus any
 costs on manual log notes). Work still in progress isn't counted until it's
 completed, so a month's figure only goes up as work finishes.
 """
-from datetime import date, timedelta
+from datetime import date
 
 from flask import Blueprint, jsonify
-from sqlalchemy import case, func, or_
-
-import staffing
+from sqlalchemy import case, func
 
 from auth.rbac import TECHNICIAN, current_user, permission_required, scope_work_orders
 from extensions import db
-from models import MaintenanceHistory, User, WorkOrder
+from models import MaintenanceHistory, WorkOrder
 from models.enums import PRIORITIES, WORK_ORDER_STATUSES
 from models.work_order import FINISHED_STATUSES, to_number
 
@@ -107,21 +105,3 @@ def summary():
         cost_by_month=cost_by_month,
     )
 
-
-@dashboard_bp.get("/staffing")
-@permission_required("dashboard:staffing")
-def staffing_insight():
-    """GET /api/dashboard/staffing - Admin/Supervisor. Rule-based staffing
-    estimate from the last 4 weeks of work orders (see backend/staffing.py
-    for the exact rule); the response carries every figure it used."""
-    now = db.session.execute(db.select(func.now())).scalar_one()   # database clock, like created_at
-    window_start = now - timedelta(days=staffing.WINDOW_DAYS + 1)
-    rows = (db.session.query(WorkOrder.created_at, WorkOrder.completed_at)
-            .filter(WorkOrder.created_at < now,
-                    or_(WorkOrder.completed_at.is_(None), WorkOrder.completed_at >= window_start))
-            .all())
-    techs = [c for (c,) in db.session.query(User.created_at)
-             .filter(User.role == TECHNICIAN, User.is_active.is_(True)).all()]
-    current_open = WorkOrder.query.filter(WorkOrder.status.notin_(FINISHED_STATUSES)).count()
-    first_created = db.session.query(func.min(WorkOrder.created_at)).scalar()
-    return jsonify(staffing=staffing.estimate(rows, techs, current_open, now, first_created))

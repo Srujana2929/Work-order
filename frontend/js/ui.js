@@ -108,6 +108,7 @@ export const icons = {
   tag: '<svg viewBox="0 0 24 24"><path d="M3.5 12.5V4h8.5l8.5 8.5-8 8z"/><circle cx="8" cy="8.5" r="1.4"/></svg>',
   team: '<svg viewBox="0 0 24 24"><circle cx="12" cy="7.5" r="3"/><path d="M6.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"/><circle cx="5" cy="10" r="2.2"/><path d="M1.8 17.5c.4-2 1.6-3.2 3.2-3.5"/><circle cx="19" cy="10" r="2.2"/><path d="M22.2 17.5c-.4-2-1.6-3.2-3.2-3.5"/></svg>',
   x: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/></svg>',
+  send: '<svg viewBox="0 0 24 24"><path d="M4 12 20 4l-6 16-2.5-6.5z"/><path d="M11.5 13.5 20 4"/></svg>',
 };
 
 /** Coloured circular icon badge. tone: any CSS colour (usually a var()). */

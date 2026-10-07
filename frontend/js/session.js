@@ -23,7 +23,7 @@ const PERMISSIONS = {
   "machines:manage":         ["Supervisor"],
   "machines:log_notes":      ["Supervisor", "Technician"],
   "dashboard:view":          ["Supervisor", "Technician"],
-  "dashboard:staffing":      ["Supervisor"],
+  "assistant:use":           ["Supervisor"],
   "audit:view":              [],
 };
 

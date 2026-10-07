@@ -64,6 +64,8 @@ class Config:
     # photo with its logged name. Without a key the photo is shown with no AI hint.
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
     PHOTO_CHECK_MODEL = os.getenv("PHOTO_CHECK_MODEL", "gemini-3.8-flash").strip()
+    # AI assistant chat (Admin/Supervisor) uses the same key.
+    ASSISTANT_MODEL = os.getenv("ASSISTANT_MODEL", "gemini-3.8-flash").strip()
     # Debug mode (interactive debugger + auto-reload) is OFF unless explicitly
     # requested - never turned on implicitly by FLASK_ENV.
     DEBUG = os.getenv("FLASK_DEBUG", "false").lower() == "true"

@@ -1,4 +1,5 @@
 """Blueprint registration."""
+from routes.assistant import assistant_bp
 from routes.audit_log import audit_bp
 from routes.auth import auth_bp
 from routes.dashboard import dashboard_bp
@@ -16,3 +17,4 @@ def register_blueprints(app):
     app.register_blueprint(machines_bp, url_prefix="/api/machines")
     app.register_blueprint(dashboard_bp, url_prefix="/api/dashboard")
     app.register_blueprint(audit_bp, url_prefix="/api/audit-log")
+    app.register_blueprint(assistant_bp, url_prefix="/api/assistant")

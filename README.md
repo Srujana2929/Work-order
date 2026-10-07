@@ -30,6 +30,8 @@ cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+# If step 5 fails with "An Application Control policy has blocked this file",
+# see the SQLAlchemy note under the setup notes below.
 
 # 5. Verify the connection
 python scripts\check_db.py
@@ -131,7 +133,8 @@ Verified and Closed work orders are locked.
 | POST | `/api/work-orders/<id>/materials/<mid>/photo/check` | as above | Run the experimental AI check (re-runs only if there's no usable result or the material was renamed) |
 | PATCH | `/api/work-orders/<id>/materials/<mid>/photo/review` | Admin, Supervisor | `{decision: "Approved" / "Rejected" / null, note?}`: the supervisor's own call; the AI hint never decides |
 | DELETE | `/api/work-orders/<id>/materials/<mid>/photo` | Admin, Supervisor, assigned technician | Remove the photo |
-| GET | `/api/dashboard/staffing` | Admin, Supervisor | Rule-based staffing estimate (see `backend/staffing.py`) with every figure it used |
+| POST | `/api/assistant/chat` | Admin, Supervisor | `{messages: [{role: "user" \| "model", text}]}` (last must be the question; max 20 turns, 2,000 chars each). Answers from a live database snapshot via Gemini |
+| GET | `/api/assistant/status` | Admin, Supervisor | Whether the assistant is configured |
 
 Retired machines keep all history and past work orders but can't be used for new work orders.
 Material edits/deletes are allowed only while costs are open (Assigned, In Progress, On Hold, Completed).
@@ -175,8 +178,16 @@ these instructions).
   are optional (see *Optional environment variables* below). Without Cloudinary the photo field is hidden;
   without the Gemini key photos show "No AI check". The AI check is an experimental hint for the
   supervisor, never a gate: failures, timeouts and refusals all leave the photo reviewable.
-- **Staffing insight** (dashboard, Admin/Supervisor) is a fixed rule over the last 4 weeks of work
-  orders: no model, no external service. The info button on the panel shows the full calculation.
+
+### AI assistant (experimental)
+
+Admins and Supervisors get an "Ask AI" bubble (bottom-right, every page). For each question the server
+queries the database (`backend/assistant_context.py`: open/overdue work orders, per-technician workload
+and throughput, supervisor activity, 8-week trends, machines, recent spend) and sends that snapshot to
+Gemini with instructions to answer only from it and to say when the data can't answer. Staffing
+answers are advice with the figures and assumptions shown, not decisions. The conversation lives in the
+browser for the session only (cleared on sign-out or reload); nothing is stored server-side. Technicians
+don't see it. Needs `GEMINI_API_KEY`; without it the panel explains that it isn't configured.
 
 ### Login throttling (migration 003)
 
@@ -210,6 +221,21 @@ In cmd.exe you can use `mysql -u root -p < database\schema.sql` instead.
 In MySQL Workbench: File > Open SQL Script > schema.sql, then run it with the lightning-bolt button.
 
 If `Activate.ps1` is blocked, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once.
+
+If `python app.py` or `check_db.py` fails with `ImportError: DLL load failed while importing _util_cy:
+An Application Control policy has blocked this file`, Windows (Smart App Control) is blocking
+SQLAlchemy's compiled speed-ups. Reinstall the same SQLAlchemy version as its pure-Python build, from
+`backend\` with the venv active (needed again whenever the venv is recreated):
+
+```powershell
+$env:DISABLE_SQLALCHEMY_CEXT = "1"
+.\.venv\Scripts\python.exe -m pip install --force-reinstall --no-deps --no-binary SQLAlchemy SQLAlchemy==2.1.1
+Remove-Item Env:DISABLE_SQLALCHEMY_CEXT
+```
+
+Same version, same behaviour (slightly slower internals); keep the version in step with
+`requirements.txt`. SQLAlchemy 2.1 has no runtime switch for this, so the reinstall is the fix.
+Linux deployments such as Railway aren't affected and use the normal build.
 
 ## Deploying (Railway)
 
@@ -245,11 +271,14 @@ on change). Leaving any of them out just switches that feature off.
 | `CLOUDINARY_CLOUD_NAME` | Material photos | Cloudinary console -> Dashboard -> Product Environment Credentials |
 | `CLOUDINARY_API_KEY` | Material photos | same place |
 | `CLOUDINARY_API_SECRET` | Material photos | same place (keep secret) |
-| `GEMINI_API_KEY` | Experimental AI photo check | aistudio.google.com -> Get API key (free tier, no billing) |
-| `PHOTO_CHECK_MODEL` | AI check model (optional) | defaults to `gemini-3.8-flash` |
+| `GEMINI_API_KEY` | AI photo check + AI assistant (both experimental) | aistudio.google.com -> Get API key (free tier, no billing) |
+| `PHOTO_CHECK_MODEL` | Photo check model (optional) | defaults to `gemini-3.8-flash` |
+| `ASSISTANT_MODEL` | Assistant model (optional) | defaults to `gemini-3.8-flash` |
 
-Each AI check is one Gemini request with one image. On Google's free tier it costs nothing, but it is
-rate-limited (a busy period shows "try again in a minute" on the photo) and Google states that free-tier
-content may be used to improve its products - i.e. material photos are shared with Google on those terms.
-If that matters, enable billing on the Google project (paid-tier content isn't used that way). A finished
-check isn't re-run, so repeat clicks don't use up quota.
+Each photo check is one Gemini request with one image; each assistant question is one request carrying
+the data snapshot (a few thousand tokens). On Google's free tier this costs nothing, but it is
+rate-limited (busy periods show "try again in a minute") and Google states that free-tier content may be
+used to improve its products - i.e. material photos, and the work-order data the assistant sends
+(titles, people's names, workload figures), are shared with Google on those terms. If that matters,
+enable billing on the Google project (paid-tier content isn't used that way). A finished photo check
+isn't re-run, so repeat clicks don't use up quota.

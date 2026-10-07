@@ -8,6 +8,8 @@ import {
 import { replayEnter, swapContent } from "./motion.js";
 import "./theme.js";
 import { closeMenus, initTopbar, refreshAlerts, renderUser, resetTopbar } from "./topbar.js";
+import { mountAssistant, unmountAssistant } from "./assistant.js";
+import { setPageArt } from "./page-art.js";
 import dashboardView from "./views/dashboard.js";
 import workOrdersView from "./views/work-orders.js";
 import machinesView from "./views/machines.js";
@@ -59,6 +61,7 @@ async function boot() {
 
 function showLogin() {
   session.user = null;
+  unmountAssistant();
   closeMenus();
   setNavOpen(false);
   unmountCurrent();
@@ -67,6 +70,7 @@ function showLogin() {
   el("view").innerHTML = "";
   el("page-title").textContent = "";
   el("page-crumb").innerHTML = "";
+  setPageArt(null);
   document.title = APP_TITLE;
   Object.values(ROUTES).forEach((r) => r.view.reset && r.view.reset());
   resetTopbar();
@@ -147,6 +151,7 @@ function showApp() {
   el("app").hidden = false;
   renderRail();
   renderUser();
+  mountAssistant();
   refreshAlerts(true);
   if (!location.hash || location.hash === "#/") location.hash = "#/dashboard";
   else route();
@@ -246,6 +251,7 @@ function route() {
   if (!entry.allowed()) {
     unmountCurrent();
     setPage("Not authorised");
+    setPageArt(null);
     viewEl.innerHTML = `<div class="panel"><div class="empty"><div class="empty__title">Not authorised</div>Your role (${esc(session.user.role)}) cannot open this page.</div></div>`;
     replayEnter(viewEl);
     return;
@@ -263,6 +269,7 @@ function route() {
     if (current.instance && current.instance.destroy) current.instance.destroy();
     viewEl.innerHTML = "";
     current = { name, instance: entry.view.mount(viewEl, params, query) || {} };
+    setPageArt(name);
     window.scrollTo(0, 0);
   }, { dir });
 }
