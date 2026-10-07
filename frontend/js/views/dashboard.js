@@ -155,7 +155,7 @@ export default {
       el.classList.toggle("staffing--alert", st.verdict === "understaffed" || st.verdict === "no_technicians");
       el.style.setProperty("--tone", tone);
       el.innerHTML = `
-        <div class="staffing__main">
+        <div class="staffing__main fade-up">
           ${iconBadge("team", tone)}
           <div class="staffing__text">
             <div class="staffing__eyebrow">
@@ -376,7 +376,7 @@ export default {
       // Stacked bars grow in on load, staggered left-to-right. Reduced motion: none.
       const animation = motionOK()
         ? {
-            duration: 420,
+            duration: 300,
             easing: "easeOutQuart",
             delay: (ctx) => (ctx.type === "data" && ctx.mode === "default" ? ctx.dataIndex * 45 + ctx.datasetIndex * 60 : 0),
           }

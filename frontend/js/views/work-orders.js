@@ -131,7 +131,7 @@ export default {
       ${tech ? `<div class="notice" style="margin-bottom:14px">Showing work orders assigned to you.</div>` : ""}
       <section class="panel">
         <div class="table-wrap">
-          <table class="data" id="wo-table">
+          <table class="data data--cards" id="wo-table">
             <thead><tr>
               <th class="sortable" data-sort="id">ID</th>
               <th>Work order</th>

@@ -62,6 +62,22 @@ export function collapseRow(tr) {
  * Options: highlight - data-id of a row to mark as newly created.
  */
 export function renderRows(tbody, html, { highlight = null } = {}) {
+  try { return renderRowsInner(tbody, html, highlight); }
+  finally { labelCells(tbody); }
+}
+
+/** Copy each column's header text onto its cells (data-label), so tables
+ *  marked .data--cards can show as one card per row on phones (CSS only). */
+function labelCells(tbody) {
+  const table = tbody.closest("table.data--cards");
+  if (!table) return;
+  const heads = [...table.querySelectorAll("thead th")].map((th) => th.textContent.replace(/[▲▼]/g, "").trim());
+  for (const tr of tbody.children) {
+    [...tr.children].forEach((td, i) => { if (heads[i] && !td.hasAttribute("colspan")) td.dataset.label = heads[i]; });
+  }
+}
+
+function renderRowsInner(tbody, html, highlight) {
   const tpl = document.createElement("template");
   tpl.innerHTML = html.trim();
   const incoming = [...tpl.content.children];
@@ -193,7 +209,7 @@ export function applyMorph(root, snap, { format = (n) => String(n) } = {}) {
 // ------------------------------------------------------------------ numbers
 
 /** Animate el's text from `from` to `to`. format(n) produces the text. */
-export function countUp(el, to, { from = 0, duration = 420, format = (n) => String(Math.round(n)) } = {}) {
+export function countUp(el, to, { from = 0, duration = 300, format = (n) => String(Math.round(n)) } = {}) {
   if (el._countRaf) cancelAnimationFrame(el._countRaf);
   if (!motionOK() || from === to || !Number.isFinite(to)) { el.textContent = format(to); return; }
   const start = performance.now();

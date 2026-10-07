@@ -33,7 +33,7 @@ export default {
         <button class="btn btn--accent" id="u-new">${icons.plus} New user</button>
       </div>
       <section class="panel">
-        <div class="table-wrap"><table class="data" id="u-table">
+        <div class="table-wrap"><table class="data data--cards" id="u-table">
           <thead><tr><th>Name</th><th>Role</th><th>Rating</th><th>Department</th><th>Phone</th><th>Status</th><th>Created</th><th></th></tr></thead>
           <tbody>${skeletonRows(8, 5)}</tbody>
         </table></div>
@@ -217,6 +217,7 @@ export default {
         return;
       }
       if (modal.isClosed) return;
+      box.classList.add("fade-up");          // skeleton -> content, same entrance as lists
       const dist = data.distribution || {};
       const max = Math.max(1, ...Object.values(dist));
       box.innerHTML = `

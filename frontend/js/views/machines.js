@@ -46,7 +46,7 @@ export default {
           ${can("machines:manage") ? `<button class="btn btn--accent" id="m-new">${icons.plus} Register machine</button>` : ""}
         </div>
         <section class="panel">
-          <div class="table-wrap"><table class="data" id="m-table">
+          <div class="table-wrap"><table class="data data--cards" id="m-table">
             <thead><tr><th>Code</th><th>Machine</th><th>Department</th><th>Location</th><th>Installed</th><th>Status</th><th class="num">Open WOs</th></tr></thead>
             <tbody>${skeletonRows(7, 5)}</tbody>
           </table></div>
@@ -255,6 +255,8 @@ export default {
       const s = machine.stats;
       const retired = machine.status === "Retired";
       const snap = morph ? captureMorph(root) : null;
+      statIndex = 0;
+      morphing = morph;
 
       root.innerHTML = `
         <a class="btn btn--ghost btn--sm" href="#/machines" style="margin:-6px 0 12px -10px">${icons.back} All machines</a>
@@ -391,11 +393,15 @@ export default {
     }
 
     /** Stat card with icon badge; `format` (int|money|hours) makes the value count up. */
+    // Stat cards stagger in like the dashboard's; not on in-place re-renders (morph).
+    let statIndex = 0;
+    let morphing = false;
     function stat(label, value, sub, tone, alert = false, format = null, icon = "layers") {
       const valueHtml = format
         ? `<div class="stat__value stat__value--md" data-countup data-format="${format}" data-value="${Number(value) || 0}">${esc(COUNT_FORMATS[format](0))}</div>`
         : `<div class="stat__value stat__value--md">${esc(value)}</div>`;
-      return `<div class="stat stat-card${alert ? " stat--alert" : ""}" style="--tone:${tone}">
+      const i = statIndex++;
+      return `<div class="stat stat-card${alert ? " stat--alert" : ""}${morphing ? "" : " fade-up"}" style="--tone:${tone};--i:${i}">
         <div class="stat-card__top">${iconBadge(icon, tone)}</div>
         <div class="label">${esc(label)}</div>${valueHtml}<div class="stat__sub">${esc(sub)}</div></div>`;
     }
