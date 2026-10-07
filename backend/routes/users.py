@@ -9,6 +9,7 @@ from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 
 import audit
+import ratings
 from auth.rbac import (
     ADMIN, SUPERVISOR, TECHNICIAN,
     current_user, has_permission, login_required, permission_required,
@@ -91,7 +92,19 @@ def list_users():
                                  User.email.like(like, escape="\\"), User.department.like(like, escape="\\")))
 
     users = query.order_by(User.full_name).all()
-    return jsonify(users=[u.to_dict() for u in users], count=len(users))
+    return jsonify(users=_with_ratings(users), count=len(users))
+
+
+def _with_ratings(users):
+    """to_dict() plus a "rating" summary ({average, count}) on technicians;
+    "rating" is null for other roles or before migration 004."""
+    summary = ratings.summaries(u.id for u in users if u.role == TECHNICIAN) or {}
+    out = []
+    for u in users:
+        d = u.to_dict()
+        d["rating"] = summary.get(u.id) if u.role == TECHNICIAN else None
+        out.append(d)
+    return out
 
 
 @users_bp.post("")
@@ -172,7 +185,30 @@ def get_user(user_id):
     )
     if not allowed:
         raise APIError("You do not have permission to view this user", 403)
-    return jsonify(user=user.to_dict())
+    return jsonify(user=_with_ratings([user])[0])
+
+
+@users_bp.get("/<int:user_id>/ratings")
+@login_required
+def user_ratings(user_id):
+    """GET /api/users/<id>/ratings - a technician's rating summary.
+    Admin/Supervisor: average, star breakdown and the 10 latest ratings with
+    comments. The technician themselves: average and count only (they can
+    see how they're doing but not the individual comments, and can't edit
+    anything - ratings are only written through the work-order endpoints)."""
+    viewer = current_user()
+    user = _get_user_or_404(user_id)
+    full = has_permission(viewer, "users:view_ratings")
+    if not (viewer.id == user.id or full):
+        raise APIError("You do not have permission to view these ratings", 403)
+    if user.role != TECHNICIAN:
+        raise APIError("Only technicians are rated", 404)
+    ratings.require_ratings()
+    body = {"user_id": user.id, **ratings.summaries([user.id])[user.id]}
+    if full:
+        body["distribution"] = ratings.distribution(user.id)
+        body["recent"] = [r.to_dict() for r in ratings.recent(user.id)]
+    return jsonify(ratings=body)
 
 
 @users_bp.patch("/<int:user_id>")

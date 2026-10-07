@@ -55,6 +55,15 @@ class Config:
     # Login throttling: this many failed attempts per username+IP within the window -> 429.
     LOGIN_MAX_FAILURES = int(os.getenv("LOGIN_MAX_FAILURES", "5"))
     LOGIN_LOCKOUT_SECONDS = int(os.getenv("LOGIN_LOCKOUT_SECONDS", "300"))
+    # Material photos (optional): stored in Cloudinary. Without these three,
+    # photo upload is switched off and the rest of the app works as before.
+    CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME", "").strip()
+    CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY", "").strip()
+    CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET", "").strip()
+    # Experimental AI photo check (optional): Claude compares a material photo
+    # with its logged name. Without a key the photo is shown with no AI hint.
+    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
+    PHOTO_CHECK_MODEL = os.getenv("PHOTO_CHECK_MODEL", "claude-opus-5-5").strip()
     # Debug mode (interactive debugger + auto-reload) is OFF unless explicitly
     # requested - never turned on implicitly by FLASK_ENV.
     DEBUG = os.getenv("FLASK_DEBUG", "false").lower() == "true"

@@ -7,6 +7,7 @@ export const session = { user: null };
 const PERMISSIONS = {
   "users:manage":            [],
   "users:list_technicians":  ["Supervisor"],
+  "users:view_ratings":      ["Supervisor"],
   "work_orders:view":        ["Supervisor", "Technician"],
   "work_orders:create":      ["Supervisor"],
   "work_orders:edit":        ["Supervisor"],
@@ -15,11 +16,14 @@ const PERMISSIONS = {
   "work_orders:log_costs":   ["Supervisor", "Technician"],
   "work_orders:verify":      ["Supervisor"],
   "work_orders:close":       ["Supervisor"],
+  "work_orders:rate":        ["Supervisor"],
+  "work_orders:review_photos": ["Supervisor"],
   "work_orders:delete":      [],
   "machines:view":           ["Supervisor", "Technician"],
   "machines:manage":         ["Supervisor"],
   "machines:log_notes":      ["Supervisor", "Technician"],
   "dashboard:view":          ["Supervisor", "Technician"],
+  "dashboard:staffing":      ["Supervisor"],
   "audit:view":              [],
 };
 

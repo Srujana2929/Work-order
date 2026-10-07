@@ -43,6 +43,9 @@ export default {
     setPage("Dashboard", ["Overview"]);
     const charts = [];
     let alive = true;
+    let closeStaffingTip = null;
+    const onDocClick = () => { if (closeStaffingTip) closeStaffingTip(); };
+    document.addEventListener("click", onDocClick);
 
     const skelCard = () => `<div class="stat stat-card is-skeleton">
         <div class="stat-card__top">${skel(18, "skel--badge")}</div>
@@ -50,6 +53,8 @@ export default {
 
     const renderShell = () => { root.innerHTML = `
       <div class="stat-cards" id="d-stats">${[1, 2, 3, 4, 5].map(skelCard).join("")}</div>
+      ${can("dashboard:staffing") ? `<section class="panel staffing" id="d-staffing" aria-label="Staffing insight">
+        <div class="staffing__main">${skel(10, "skel--badge")}<div class="staffing__text">${skeletonBlock(3)}</div></div></section>` : ""}
 
       <div class="dash-grid">
         <section class="panel">
@@ -88,6 +93,7 @@ export default {
 
     renderShell();
     load();
+    loadStaffing();
 
     async function load() {
       try {
@@ -114,8 +120,85 @@ export default {
           charts.length = 0;
           renderShell();
           load();
+          loadStaffing();
         });
       }
+    }
+
+    // ------------------------------------------------------------ staffing insight
+
+    // Separate request: if it fails, the rest of the dashboard is unaffected.
+    async function loadStaffing() {
+      const el = root.querySelector("#d-staffing");
+      if (!el) return;
+      try {
+        const { staffing } = await api("/dashboard/staffing");
+        if (alive) renderStaffing(el, staffing);
+      } catch (err) {
+        if (!alive) return;
+        el.innerHTML = `<div class="staffing__main">${iconBadge("team", "var(--grey)")}<div class="staffing__text">
+          <div class="staffing__eyebrow"><span class="label">Staffing insight</span></div>
+          <p class="staffing__detail muted">Couldn't calculate the staffing estimate: ${esc(err.message)}</p></div>
+          <button class="btn btn--sm" type="button" data-staffing-retry>Try again</button></div>`;
+        el.querySelector("[data-staffing-retry]").addEventListener("click", loadStaffing);
+      }
+    }
+
+    function renderStaffing(el, st) {
+      const tone = { understaffed: "var(--amber)", sufficient: "var(--green)", no_technicians: "var(--red)" }[st.verdict] || "var(--grey)";
+      const c = st.current, h = st.history, rule = st.rule;
+      const num = (n, digits = 1) => (n === null || n === undefined ? "—" : Number(n).toFixed(digits));
+      const figure = (label, value, sub = "") =>
+        `<div class="staffing__fig"><dt class="label">${esc(label)}</dt><dd>${value}${sub ? `<small>${esc(sub)}</small>` : ""}</dd></div>`;
+      const weeks = h.weeks || [];
+      const maxWeek = Math.max(rule.benchmark_per_technician || 1, ...weeks.map((w) => w.avg_per_technician || 0), c.open_per_technician || 0);
+      el.classList.toggle("staffing--alert", st.verdict === "understaffed" || st.verdict === "no_technicians");
+      el.style.setProperty("--tone", tone);
+      el.innerHTML = `
+        <div class="staffing__main">
+          ${iconBadge("team", tone)}
+          <div class="staffing__text">
+            <div class="staffing__eyebrow">
+              <span class="label">Staffing insight</span>
+              <span class="chip chip--outline" title="${esc(st.method)}">Data-driven estimate · not an AI model</span>
+              <button class="info-tip" type="button" aria-expanded="false" aria-controls="d-staffing-how" title="How is this calculated?">
+                ${icons.info}<span class="visually-hidden">How is this calculated?</span></button>
+            </div>
+            <p class="staffing__message">${esc(st.message)}</p>
+            ${st.detail ? `<p class="staffing__detail">${esc(st.detail)}</p>` : ""}
+          </div>
+          <dl class="staffing__figures">
+            ${figure("Open now", String(c.open_work_orders))}
+            ${figure("Technicians", String(c.technicians), "active")}
+            ${figure("Per technician", num(c.open_per_technician), "now")}
+            ${figure("4-week average", num(h.avg_open_per_technician), "per technician")}
+            ${st.verdict === "understaffed" ? figure("Suggested", String(st.recommended_headcount), `+${st.additional_technicians}`) : ""}
+          </dl>
+        </div>
+        <div class="info-pop" id="d-staffing-how" hidden>
+          <div class="info-pop__head">${icons.info}<b>How this estimate works</b></div>
+          <p>A fixed rule applied to your own work-order history - no machine learning, no external service.</p>
+          <ol>
+            <li>For each of the last ${h.window_days} days, count the work orders open at the end of the day and the active technicians then. Their average ratio is the usual load: <b>${num(h.avg_open_per_technician)}</b> open work orders per technician over <b>${h.days_with_data}</b> day${h.days_with_data === 1 ? "" : "s"} of data.</li>
+            <li>A technician is assumed to manage at least <b>${rule.min_load_per_technician}</b> open work orders, so the benchmark is the higher of the two: <b>${num(rule.benchmark_per_technician)}</b>.</li>
+            <li>Today: <b>${c.open_work_orders}</b> open ÷ <b>${c.technicians}</b> technician${c.technicians === 1 ? "" : "s"} = <b>${num(c.open_per_technician)}</b> each. Up to ${rule.tolerance_pct}% above the benchmark counts as sufficient; beyond that the suggestion is open ÷ benchmark, rounded up${st.verdict === "understaffed" ? ` = <b>${st.recommended_headcount}</b> technicians` : ""}.</li>
+          </ol>
+          ${weeks.length ? `<div class="info-pop__weeks" aria-label="Open work orders per technician by week">
+            ${weeks.map((w) => `<div class="info-pop__week" title="${esc(w.from)} – ${esc(w.to)}: ${num(w.avg_per_technician)} per technician, ${num(w.avg_open)} open on average">
+              <span class="info-pop__bar"><i style="height:${((w.avg_per_technician || 0) / maxWeek) * 100}%"></i></span>
+              <span class="mono">${num(w.avg_per_technician)}</span><small class="muted">${esc(w.from.slice(5))}</small></div>`).join("")}
+            <div class="info-pop__week info-pop__week--now" title="Now"><span class="info-pop__bar"><i style="height:${((c.open_per_technician || 0) / maxWeek) * 100}%"></i></span>
+              <span class="mono">${num(c.open_per_technician)}</span><small class="muted">now</small></div>
+          </div>` : ""}
+          <p class="muted info-pop__limits">Limits: every work order counts the same regardless of size or priority; deleted work orders and deactivated technicians aren't in the history; treat this as a prompt for a conversation, not a hiring decision.</p>
+        </div>`;
+      const tip = el.querySelector(".info-tip");
+      const pop = el.querySelector(".info-pop");
+      const setOpen = (open) => { pop.hidden = !open; tip.setAttribute("aria-expanded", String(open)); };
+      tip.addEventListener("click", (e) => { e.stopPropagation(); setOpen(pop.hidden); });
+      pop.addEventListener("click", (e) => e.stopPropagation());
+      closeStaffingTip = () => setOpen(false);
+      el.addEventListener("keydown", (e) => { if (e.key === "Escape" && !pop.hidden) { setOpen(false); tip.focus(); } });
     }
 
     // ------------------------------------------------------------ stat cards
@@ -346,6 +429,7 @@ export default {
       destroy() {
         alive = false;
         window.removeEventListener("themechange", onTheme);
+        document.removeEventListener("click", onDocClick);
         charts.forEach((c) => c.destroy());
       },
     };

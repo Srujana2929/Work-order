@@ -33,7 +33,9 @@ async function request(path, { method = "GET", body, query } = {}) {
   }
 
   const headers = { Accept: "application/json", "X-Requested-With": "fetch" };
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  // FormData (file uploads) sets its own multipart Content-Type.
+  const isForm = body instanceof FormData;
+  if (body !== undefined && !isForm) headers["Content-Type"] = "application/json";
 
   let response;
   try {
@@ -41,7 +43,7 @@ async function request(path, { method = "GET", body, query } = {}) {
       method,
       headers,
       credentials: "same-origin",
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
     });
   } catch {
     throw new ApiError("Cannot reach the server. Check that the Flask app is running.", 0);

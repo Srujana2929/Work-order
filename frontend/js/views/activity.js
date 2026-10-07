@@ -200,7 +200,8 @@ const ACTION_LABELS = {
   "machine.updated": "Machine edited", "machine.retired": "Retired", "machine.reactivated": "Reactivated",
   "maintenance.note_added": "Note", "user.created": "User created", "user.updated": "User edited",
   "user.deactivated": "Deactivated", "user.reactivated": "Reactivated", "user.password_reset": "Password reset",
-  "user.password_changed": "Password changed",
+  "user.password_changed": "Password changed", "work_order.rated": "Rated",
+  "material.photo_added": "Photo added", "material.photo_removed": "Photo removed", "material.photo_reviewed": "Photo reviewed",
 };
 const actionLabel = (a) => ACTION_LABELS[a] || a;
 

@@ -15,7 +15,7 @@ from sqlalchemy import text  # noqa: E402
 from sqlalchemy.exc import DBAPIError  # noqa: E402
 
 EXPECTED_TABLES = {"users", "machines", "work_orders", "materials", "maintenance_history",
-                   "audit_log", "login_attempts"}
+                   "audit_log", "login_attempts", "technician_ratings", "material_photos"}
 TECHNICIAN_RULE_MESSAGE = "must have an assigned technician"
 
 
@@ -100,7 +100,8 @@ def main():
     try:
         from app import create_app
         from extensions import db
-        from models import AuditLog, LoginAttempt, MaintenanceHistory, Machine, Material, User, WorkOrder
+        from models import (AuditLog, LoginAttempt, MaintenanceHistory, Machine, Material, MaterialPhoto,
+                            TechnicianRating, User, WorkOrder)
 
         app = create_app()
     except Exception as exc:
@@ -120,7 +121,8 @@ def main():
         tables = set(db.session.execute(text("SHOW TABLES")).scalars())
         missing = EXPECTED_TABLES - tables
         if missing:
-            print(f"[FAIL] Missing tables: {', '.join(sorted(missing))} - run database/schema.sql")
+            print(f"[FAIL] Missing tables: {', '.join(sorted(missing))} - run database/schema.sql "
+              f"(existing databases: the matching file in database/migrations/)")
             return 1
         print(f"[OK] Tables present: {', '.join(sorted(EXPECTED_TABLES))}")
 
@@ -128,7 +130,8 @@ def main():
             return 1
 
         # Querying through each model proves the ORM columns match the real tables.
-        for model in (User, Machine, WorkOrder, Material, MaintenanceHistory, AuditLog, LoginAttempt):
+        for model in (User, Machine, WorkOrder, Material, MaintenanceHistory, AuditLog, LoginAttempt,
+                      TechnicianRating, MaterialPhoto):
             try:
                 model.query.first()
                 count = db.session.query(model).count()

@@ -2,7 +2,7 @@
 // All data comes from the existing API (work orders, machines, dashboard summary).
 import { api } from "./api.js";
 import { can, isTechnician, session } from "./session.js";
-import { debounce, esc, fmt, icons, initials, statusBadge } from "./ui.js";
+import { debounce, esc, fmt, icons, initials, ratingSummary, statusBadge } from "./ui.js";
 
 const $ = (id) => document.getElementById(id);
 let handlers = { logout: () => {}, changePassword: () => {} };
@@ -92,8 +92,25 @@ export function renderUser() {
       <div><b>${esc(u.full_name)}</b><div class="muted mono">${esc(u.email)}</div>
       <span class="role-tag role-tag--${esc(u.role.toLowerCase())}">${esc(u.role)}</span>${u.department ? ` <span class="muted">· ${esc(u.department)}</span>` : ""}</div>
     </div>
+    ${isTechnician() ? `<div class="user-menu__rating" data-my-rating hidden></div>` : ""}
     <button class="dropdown__item" type="button" data-menu="password">${icons.key}<span>Change password</span></button>
     <button class="dropdown__item dropdown__item--danger" type="button" data-menu="logout">${icons.logout}<span>Sign out</span></button>`;
+  loadMyRating();
+}
+
+/** Technicians see their own average rating (never individual comments).
+ *  Fills every [data-my-rating] slot (user menu + sidebar). */
+async function loadMyRating() {
+  const me = session.user;
+  if (!me || !isTechnician()) return;
+  let r;
+  try { ({ ratings: r } = await api(`/users/${me.id}/ratings`)); } catch { return; }   // e.g. ratings not set up yet
+  if (session.user !== me) return;
+  document.querySelectorAll("[data-my-rating]").forEach((slot) => {
+    slot.innerHTML = `<span class="label">Your rating</span>${ratingSummary(r, { empty: "Not rated yet" })}`;
+    slot.title = "Average of the ratings supervisors gave your verified work";
+    slot.hidden = false;
+  });
 }
 
 // ------------------------------------------------------------------ alerts (bell)

@@ -7,5 +7,8 @@ from models.material import Material
 from models.maintenance_history import MaintenanceHistory
 from models.audit_log import AuditLog
 from models.login_attempt import LoginAttempt
+from models.rating import TechnicianRating
+from models.material_photo import MaterialPhoto
 
-__all__ = ["User", "Machine", "WorkOrder", "Material", "MaintenanceHistory", "AuditLog", "LoginAttempt"]
+__all__ = ["User", "Machine", "WorkOrder", "Material", "MaintenanceHistory", "AuditLog", "LoginAttempt",
+           "TechnicianRating", "MaterialPhoto"]

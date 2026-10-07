@@ -98,32 +98,94 @@ export const icons = {
   archive: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11h14V8M10 12h4"/></svg>',
   restore: '<svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.5"/><path d="M4 4v4.5h4.5"/></svg>',
   activity: '<svg viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>',
+  star: '<svg viewBox="0 0 24 24"><path d="m12 3.2 2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 17l-5.4 2.9 1.1-6.1-4.5-4.2 6.1-.8z"/></svg>',
+  camera: '<svg viewBox="0 0 24 24"><path d="M4 8h3l1.6-2.4h6.8L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.4"/></svg>',
+  image: '<svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="m4 18 5-5 3.5 3.5L15 14l5 4.5"/></svg>',
+  sparkle: '<svg viewBox="0 0 24 24"><path d="M12 3.5 13.8 9l5.7 1.9-5.7 1.9L12 18.5l-1.8-5.7L4.5 11 10.2 9z"/><path d="M19 3v3M17.5 4.5h3"/></svg>',
+  info: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.6v.01"/></svg>',
+  mail: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 6.5 8.5 6.5 8.5-6.5"/></svg>',
+  phone: '<svg viewBox="0 0 24 24"><path d="M6.5 3.5h3l1.5 4.5-2 1.5a11 11 0 0 0 5.5 5.5l1.5-2 4.5 1.5v3a2 2 0 0 1-2 2A16 16 0 0 1 4.5 5.5a2 2 0 0 1 2-2z"/></svg>',
+  tag: '<svg viewBox="0 0 24 24"><path d="M3.5 12.5V4h8.5l8.5 8.5-8 8z"/><circle cx="8" cy="8.5" r="1.4"/></svg>',
+  team: '<svg viewBox="0 0 24 24"><circle cx="12" cy="7.5" r="3"/><path d="M6.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"/><circle cx="5" cy="10" r="2.2"/><path d="M1.8 17.5c.4-2 1.6-3.2 3.2-3.5"/><circle cx="19" cy="10" r="2.2"/><path d="M22.2 17.5c-.4-2-1.6-3.2-3.2-3.5"/></svg>',
+  x: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/></svg>',
 };
 
 /** Coloured circular icon badge. tone: any CSS colour (usually a var()). */
 export const iconBadge = (icon, tone, size = "") =>
   `<span class="icon-badge${size ? ` icon-badge--${size}` : ""}" style="--tone:${tone}">${icons[icon] || icon}</span>`;
 
+/** Read-only star rating (0-5, fractions shown as partial fill). */
+export function stars(value, { size = "" } = {}) {
+  const v = Math.max(0, Math.min(5, Number(value) || 0));
+  const row = icons.star.repeat(5);
+  return `<span class="stars${size ? ` stars--${size}` : ""}" role="img" aria-label="${v.toFixed(1)} out of 5 stars" style="--fill:${(v / 5) * 100}%">
+    <span class="stars__base" aria-hidden="true">${row}</span><span class="stars__fill" aria-hidden="true">${row}</span></span>`;
+}
+
+/** Compact average-rating badge from a {average, count} summary (null -> ""). */
+export function ratingSummary(r, { empty = "No ratings yet" } = {}) {
+  if (!r) return "";
+  if (!r.count) return `<span class="rating rating--none">${esc(empty)}</span>`;
+  return `<span class="rating" title="${r.average.toFixed(2)} average from ${r.count} rating${r.count === 1 ? "" : "s"}">
+    ${stars(r.average, { size: "sm" })}<b>${r.average.toFixed(1)}</b><span class="muted">(${r.count})</span></span>`;
+}
+
+/** Interactive 1-5 star input (radio group named `name`). */
+export function starPicker(name, value = 0) {
+  const id = `sp-${Math.random().toString(36).slice(2, 7)}`;
+  const words = ["", "Poor", "Below expectations", "Good", "Very good", "Excellent"];
+  return `<div class="star-field"><div class="star-picker" role="radiogroup" aria-label="Rating">
+    ${[5, 4, 3, 2, 1].map((n) => `<input type="radio" id="${id}-${n}" name="${name}" value="${n}"${n === Number(value) ? " checked" : ""}>
+      <label for="${id}-${n}" title="${n} star${n === 1 ? "" : "s"} - ${words[n]}">${icons.star}<span class="sr-only">${n} star${n === 1 ? "" : "s"}</span></label>`).join("")}
+    </div><span class="star-picker__word" aria-live="polite"></span></div>`;
+}
+
+/** Wire a starPicker inside `root`: shows the word for the chosen value; the
+ *  chosen star can be clicked again to clear it. */
+export function wireStarPicker(root) {
+  const picker = root.querySelector(".star-picker");
+  if (!picker) return;
+  const words = ["", "Poor", "Below expectations", "Good", "Very good", "Excellent"];
+  const word = picker.parentElement.querySelector(".star-picker__word");
+  const sync = () => {
+    const c = picker.querySelector("input:checked");
+    word.textContent = c ? words[Number(c.value)] : "Not rated";
+  };
+  picker.addEventListener("click", (e) => {
+    const label = e.target.closest("label");
+    if (!label) return;
+    const input = picker.querySelector(`#${CSS.escape(label.htmlFor)}`);
+    if (input.checked) { e.preventDefault(); input.checked = false; sync(); }
+  });
+  picker.addEventListener("change", sync);
+  sync();
+}
+
 /** Initials for an avatar circle ("Sam Supervisor" -> "SS"). */
 export const initials = (name) =>
   String(name || "?").trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 
-/** Friendly empty state with a light line illustration. */
-export function emptyState(title, text = "", art = "check") {
+/** Friendly empty state with a light line illustration. `action`: optional button HTML. */
+export function emptyState(title, text = "", art = "check", action = "") {
   const arts = {
     check: '<svg viewBox="0 0 96 72"><rect x="14" y="10" width="68" height="52" rx="8" class="a1"/><path d="M26 24h30M26 34h22M26 44h26" class="a2"/><circle cx="70" cy="50" r="13" class="a3"/><path d="m64 50 4.5 4.5L77 46" class="a4"/></svg>',
     calendar: '<svg viewBox="0 0 96 72"><rect x="18" y="12" width="60" height="50" rx="8" class="a1"/><path d="M18 26h60M34 6v12M62 6v12" class="a2"/><circle cx="48" cy="44" r="10" class="a3"/><path d="M48 39v5l3 2" class="a4"/></svg>',
     chart: '<svg viewBox="0 0 96 72"><path d="M14 62h68" class="a2"/><rect x="22" y="36" width="12" height="26" rx="3" class="a1"/><rect x="42" y="22" width="12" height="40" rx="3" class="a1"/><rect x="62" y="44" width="12" height="18" rx="3" class="a3"/></svg>',
     search: '<svg viewBox="0 0 96 72"><circle cx="42" cy="32" r="18" class="a1"/><path d="m55 45 14 14" class="a4"/><path d="M34 32h16" class="a2"/></svg>',
+    orders: '<svg viewBox="0 0 96 72"><rect x="24" y="10" width="48" height="56" rx="7" class="a1"/><rect x="38" y="5" width="20" height="10" rx="3" class="a3"/><path d="M34 30h28M34 40h20M34 50h24" class="a2"/><circle cx="73" cy="53" r="11" class="a3"/><path d="M73 47.5v11M67.5 53h11" class="a4"/></svg>',
+    machine: '<svg viewBox="0 0 96 72"><rect x="12" y="24" width="56" height="34" rx="6" class="a1"/><path d="M12 58h64M22 24V14h20v10" class="a2"/><circle cx="72" cy="28" r="14" class="a3"/><circle cx="72" cy="28" r="5" class="a4"/><path d="M24 38h18M24 46h10" class="a2"/></svg>',
+    users: '<svg viewBox="0 0 96 72"><circle cx="38" cy="26" r="11" class="a1"/><path d="M18 62c2-12 10-18 20-18s18 6 20 18" class="a1"/><circle cx="68" cy="30" r="8" class="a3"/><path d="M58 60c1-8 5-12 10-12s9 4 10 12" class="a4"/></svg>',
+    photo: '<svg viewBox="0 0 96 72"><rect x="16" y="12" width="64" height="48" rx="7" class="a1"/><circle cx="34" cy="28" r="6" class="a3"/><path d="m18 56 18-16 12 12 8-6 22 12" class="a4"/></svg>',
   };
-  return `<div class="empty empty-state fade-up">
+  return `<div class="empty empty-state fade-up" data-art="${esc(arts[art] ? art : "check")}">
     <div class="empty-state__art" aria-hidden="true">${arts[art] || arts.check}</div>
     <div class="empty__title">${esc(title)}</div>${text ? `<p>${esc(text)}</p>` : ""}
+    ${action ? `<div class="empty-state__action">${action}</div>` : ""}
   </div>`;
 }
 
-export const emptyRow = (colspan, title, text = "") =>
-  `<tr class="empty-row"><td colspan="${colspan}">${emptyState(title, text, "search")}</td></tr>`;
+export const emptyRow = (colspan, title, text = "", art = "search", action = "") =>
+  `<tr class="empty-row"><td colspan="${colspan}">${emptyState(title, text, art, action)}</td></tr>`;
 
 /** Failed-load state with a "Try again" button (views wire up [data-retry]). */
 export function errorState(title, message, { retry = true } = {}) {

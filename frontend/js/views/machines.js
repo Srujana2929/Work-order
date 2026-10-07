@@ -19,6 +19,7 @@ const MACHINE_STATUSES = ["Operational", "Under Maintenance", "Breakdown", "Reti
 const ACTIVE_STATUSES = MACHINE_STATUSES.filter((s) => s !== "Retired");   // "Retired" only via Retire
 const CATEGORIES = ["Preventive", "Corrective", "Breakdown", "Inspection", "Calibration", "Installation", "Other"];
 const listState = { q: "", department: "", status: "", page: 1 };
+const STATUS_TONES = { Operational: "var(--green)", "Under Maintenance": "var(--amber)", Breakdown: "var(--red)", Retired: "var(--grey)" };
 
 export default {
   reset() { Object.assign(listState, { q: "", department: "", status: "", page: 1 }); },   // on sign-out
@@ -60,6 +61,14 @@ export default {
       if ($("#m-new")) $("#m-new").addEventListener("click", () => openMachineForm(null));
       $("#m-table tbody").addEventListener("click", (e) => {
         if (e.target.closest("[data-retry]")) { load(); return; }
+        const emptyAct = e.target.closest("[data-empty]");
+        if (emptyAct) {
+          if (emptyAct.dataset.empty === "new") { openMachineForm(null); return; }
+          Object.assign(listState, { q: "", department: "", status: "", page: 1 });
+          $("#m-q").value = ""; $("#m-dept").value = ""; $("#m-status").value = "";
+          load();
+          return;
+        }
         const tr = e.target.closest("tr[data-id]");
         if (tr) location.hash = `#/machines/${tr.dataset.id}`;
       });
@@ -81,15 +90,21 @@ export default {
           const tbody = $("#m-table tbody");
           renderRows(tbody, data.machines.length ? data.machines.map((m) => `
             <tr class="clickable${m.status === "Retired" ? " is-inactive" : ""}" data-id="${m.id}">
-              <td class="mono nowrap">${esc(m.machine_code)}</td>
-              <td><div class="cell-title">${esc(m.name)}</div><div class="cell-sub">${esc([m.manufacturer, m.model].filter(Boolean).join(" · ")) || "&nbsp;"}</div></td>
-              <td>${esc(m.department)}</td>
-              <td>${esc(m.location || "—")}</td>
+              <td class="nowrap"><span class="code-chip code-chip--lg">${esc(m.machine_code)}</span></td>
+              <td><div class="person">${iconBadge("machine", STATUS_TONES[m.status] || "var(--steel)", "sm")}
+                <div><div class="cell-title">${esc(m.name)}</div><div class="cell-sub">${esc([m.manufacturer, m.model].filter(Boolean).join(" · ")) || "&nbsp;"}</div></div></div></td>
+              <td><span class="with-icon">${icons.building}${esc(m.department)}</span></td>
+              <td>${m.location ? esc(m.location) : '<span class="muted">—</span>'}</td>
               <td class="mono">${fmt.date(m.install_date)}</td>
               <td>${statusBadge(m.status)}</td>
               <td class="num">${m.open_work_orders ? `<span class="chip chip--amber">${m.open_work_orders}</span>` : '<span class="muted">0</span>'}</td>
             </tr>`).join("")
-            : emptyRow(7, "No machines found", listState.q || listState.department || listState.status ? "Try clearing the filters." : "Register the first machine."));
+            : (listState.q || listState.department || listState.status)
+              ? emptyRow(7, "No machines found", "Nothing matches these filters.", "search",
+                  `<button class="btn btn--sm" type="button" data-empty="clear">Clear filters</button>`)
+              : emptyRow(7, "No machines registered yet",
+                  can("machines:manage") ? "Register your equipment so work orders and maintenance history can be tracked against it." : "Machines appear here once a supervisor registers them.",
+                  "machine", can("machines:manage") ? `<button class="btn btn--accent btn--sm" type="button" data-empty="new">${icons.plus} Register machine</button>` : ""));
           const p = data.pagination;
           $("#m-count").textContent = `${p.total} MACHINE${p.total === 1 ? "" : "S"}`;
           $("#m-pager").innerHTML = p.pages > 1 ? `

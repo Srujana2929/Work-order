@@ -14,3 +14,8 @@ python-dotenv==1.2.3
 PyJWT==2.15.0
 # Production WSGI server (Flask's own dev server isn't safe for production).
 gunicorn==23.0.0
+# Material photo storage (Cloudinary) and the experimental AI photo check
+# (Claude). Both are imported lazily - without credentials those features
+# simply switch off.
+cloudinary==1.46.3
+anthropic==1.11.0

@@ -16,10 +16,15 @@ from auth.rbac import (
     permission_required, scope_work_orders,
 )
 from errors import APIError
+from schema_check import photos_available, ratings_available
 from extensions import db
 import audit
+import photo_check
+import photo_storage
+import ratings
 from maintenance import HISTORY_STATUSES, remove_history, sync_history_if_finished, upsert_history
-from models import Machine, Material, User, WorkOrder
+from models import Machine, Material, MaterialPhoto, User, WorkOrder
+from models.material_photo import REVIEW_STATUSES
 from models.enums import MAINTENANCE_CATEGORIES, PRIORITIES, WORK_ORDER_STATUSES
 from validation import (
     clean_str, get_json_body, like_pattern, parse_date, parse_decimal, parse_int,
@@ -97,8 +102,18 @@ def _validate_due_date(value, created_on):
 
 
 def _detail(work_order, status=200):
+    user = current_user()
     body = work_order.to_dict(include_materials=True)
-    body["allowed_transitions"] = allowed_transitions(current_user(), work_order)
+    body["allowed_transitions"] = allowed_transitions(user, work_order)
+    # Individual ratings (stars + comment) are for supervisors/admins; the
+    # technician sees only their own average (GET /api/users/<id>/ratings).
+    rating = ratings.rating_for(work_order) if has_permission(user, "users:view_ratings") else None
+    body["rating"] = rating.to_dict() if rating else None
+    body["features"] = {
+        "ratings": ratings_available(),
+        "photos": photos_available() and photo_storage.is_configured(),
+        "photo_ai_check": photo_check.is_configured(),
+    }
     return jsonify(work_order=body), status
 
 
@@ -347,7 +362,8 @@ def change_status(wo_id):
     work_order = _load_work_order(wo_id, lock=True)
     data = get_json_body()
     reject_unknown_fields(data, {"status", "assigned_technician_id",
-                                 "work_performed", "downtime_hours", "remarks"})
+                                 "work_performed", "downtime_hours", "remarks",
+                                 "rating", "rating_comment"})
     require_fields(data, "status")
 
     new_status = validate_choice(data["status"], WORK_ORDER_STATUSES, "status")
@@ -369,7 +385,8 @@ def change_status(wo_id):
 
     notes_statuses = ("Completed", "Verified")
     extra_for = {"assigned_technician_id": ("Assigned",), "work_performed": notes_statuses,
-                 "downtime_hours": notes_statuses, "remarks": notes_statuses}
+                 "downtime_hours": notes_statuses, "remarks": notes_statuses,
+                 "rating": ratings.RATABLE_STATUSES, "rating_comment": ratings.RATABLE_STATUSES}
     misplaced = sorted(f for f, targets in extra_for.items()
                        if f in data and new_status not in targets)
     if misplaced:
@@ -383,6 +400,17 @@ def change_status(wo_id):
             "downtime_hours": (parse_decimal(data["downtime_hours"], "downtime_hours", 0, MAX_HOURS)
                                if data.get("downtime_hours") is not None else None),
         }
+
+    # Optional technician rating, given while verifying or closing.
+    rating = None
+    if data.get("rating") is not None:
+        if not has_permission(user, "work_orders:rate"):
+            raise APIError("You do not have permission to rate technicians", 403)
+        ratings.require_ratings()
+        rating = ratings.parse_rating(data["rating"], data.get("rating_comment"),
+                                      stars_field="rating", comment_field="rating_comment")
+    elif data.get("rating_comment"):
+        raise APIError("'rating_comment' needs a 'rating' (1-5 stars)", 400)
 
     now = db.func.now()
     if new_status == "Assigned":
@@ -423,6 +451,24 @@ def change_status(wo_id):
                  f"{user.full_name} changed {wo_label(work_order)} status from {old_status} to {new_status}"
                  + (" (sent back for rework)" if old_status == "Completed" and new_status == "In Progress" else ""),
                  {"from": old_status, "to": new_status, **extra})
+    if rating is not None:
+        ratings.save_rating(work_order, user, *rating)
+    db.session.commit()
+    return _detail(work_order)
+
+
+@wo_bp.put("/<int:wo_id>/rating")
+@permission_required("work_orders:rate")
+def rate_work_order(wo_id):
+    """PUT /api/work-orders/<id>/rating  {"stars": 1-5, "comment": "..."?}
+    Rate (or re-rate) the technician on a Verified or Closed work order -
+    e.g. when the rating was skipped while verifying."""
+    work_order = _load_work_order(wo_id, lock=True)
+    data = get_json_body()
+    reject_unknown_fields(data, {"stars", "comment"})
+    require_fields(data, "stars")
+    stars, comment = ratings.parse_rating(data["stars"], data.get("comment"))
+    ratings.save_rating(work_order, current_user(), stars, comment)
     db.session.commit()
     return _detail(work_order)
 
@@ -440,9 +486,18 @@ def delete_work_order(wo_id):
                  f"{user.full_name} deleted {wo_label(work_order)} “{work_order.title}”",
                  {"title": work_order.title, "status": work_order.status,
                   "total_cost": audit._plain(work_order.total_cost)})
+    photo_ids = _photo_ids(work_order.materials)
     db.session.delete(work_order)
     db.session.commit()
+    for public_id in photo_ids:            # after commit: storage cleanup is best-effort
+        photo_storage.destroy_quietly(public_id)
     return jsonify(message=f"Work order {wo_id} deleted")
+
+
+def _photo_ids(materials):
+    if not photos_available():
+        return []
+    return [m.photo.public_id for m in materials if m.photo]
 
 
 # ------------------------------------------------------------------ costs
@@ -566,6 +621,7 @@ def delete_material(wo_id, material_id):
     material = _load_material(work_order, material_id)
     snapshot = _material_snapshot(material)
     text = material_text(material)
+    photo_ids = _photo_ids([material])
     db.session.delete(material)
     db.session.flush()                 # trigger recalculates work_orders.material_cost
     db.session.refresh(work_order)
@@ -575,6 +631,8 @@ def delete_material(wo_id, material_id):
                  f"{user.full_name} removed {text} from {wo_label(work_order)}",
                  {"work_order_id": work_order.id, **snapshot})
     db.session.commit()
+    for public_id in photo_ids:
+        photo_storage.destroy_quietly(public_id)
     return jsonify(message="Material removed", costs=_cost_summary(work_order))
 
 
@@ -616,3 +674,158 @@ def log_labour(wo_id):
     db.session.commit()
 
     return jsonify(message=f"Logged {hours} h", costs=_cost_summary(work_order))
+
+
+# ----------------------------------------------------------- material photos
+# A technician (or supervisor) attaches one photo per logged material. An
+# experimental AI check compares it with the material's name - as a hint for
+# the supervisor, who approves or rejects the photo themselves. Nothing here
+# ever blocks the work-order workflow.
+
+def _require_photos():
+    if not photos_available():
+        raise APIError("Material photos aren't set up on this server yet - an administrator needs to "
+                       "run database/migrations/004_ratings_and_photos.sql", 503)
+
+
+def _load_photo(material):
+    if material.photo is None:
+        raise APIError("This material has no photo", 404)
+    return material.photo
+
+
+@wo_bp.post("/<int:wo_id>/materials/<int:material_id>/photo")
+@permission_required("work_orders:view")
+def upload_material_photo(wo_id, material_id):
+    """POST /api/work-orders/<id>/materials/<material_id>/photo
+    multipart/form-data with one file field 'photo' (JPEG, PNG, WebP, HEIC or
+    GIF, up to 10 MB). Replaces any existing photo and resets its AI check and
+    review. Same rules as editing the material (costs must still be open).
+    Run the AI check afterwards with POST .../photo/check."""
+    _require_photos()
+    # Photos are the one place a body may exceed the global 1 MB limit.
+    request.max_content_length = photo_storage.MAX_BYTES + 64 * 1024
+    work_order = _load_for_costs(wo_id)
+    material = _load_material(work_order, material_id)
+
+    file = request.files.get("photo")
+    if file is None or not file.filename:
+        raise APIError("Attach the image as a form field named 'photo'", 400)
+    data = file.read(photo_storage.MAX_BYTES + 1)
+    if not data:
+        raise APIError("The photo file is empty", 400)
+    if len(data) > photo_storage.MAX_BYTES:
+        raise APIError(f"The photo must be at most {photo_storage.MAX_BYTES // (1024 * 1024)} MB", 413)
+    if photo_storage.sniff_image_type(data) is None:
+        raise APIError("The file isn't a supported image (JPEG, PNG, WebP, HEIC or GIF)", 400)
+
+    stored = photo_storage.upload(data, work_order.id, material.id)
+    user = current_user()
+    photo = material.photo
+    replaced = photo.public_id if photo else None
+    if photo is None:
+        photo = MaterialPhoto(material_id=material.id)
+        db.session.add(photo)
+    photo.public_id, photo.url = stored["public_id"], stored["url"]
+    photo.width, photo.height, photo.bytes = stored["width"], stored["height"], stored["bytes"]
+    photo.uploaded_by, photo.uploaded_at = user.id, db.func.now()
+    photo.ai_status, photo.ai_note, photo.ai_detail = "pending", None, None
+    photo.ai_checked_for = photo.ai_model = photo.ai_checked_at = None
+    photo.review_status = photo.review_note = photo.reviewed_by = photo.reviewed_at = None
+    audit.record(user, "material.photo_added", "material", material.id, wo_label(work_order),
+                 f"{user.full_name} {'replaced the' if replaced else 'attached a'} photo of "
+                 f"{material.material_name} on {wo_label(work_order)}",
+                 {"work_order_id": work_order.id, "material_name": material.material_name})
+    db.session.commit()
+    if replaced:
+        photo_storage.destroy_quietly(replaced)
+    db.session.refresh(material)
+    return jsonify(material=material.to_dict()), 201
+
+
+@wo_bp.post("/<int:wo_id>/materials/<int:material_id>/photo/check")
+@permission_required("work_orders:view")
+def check_material_photo(wo_id, material_id):
+    """POST .../photo/check - run the experimental AI consistency check.
+    For whoever can log costs on this work order or review photos. Runs only
+    when there's no usable result yet (never run, failed, or the material was
+    renamed since), so repeated clicks don't re-bill the API."""
+    _require_photos()
+    user = current_user()
+    if not (has_permission(user, "work_orders:log_costs") or has_permission(user, "work_orders:review_photos")):
+        raise APIError("You do not have permission to check this photo", 403)
+    work_order = _load_work_order(wo_id)
+    material = _load_material(work_order, material_id)
+    photo = _load_photo(material)
+
+    fresh = (photo.ai_status in ("consistent", "unclear", "mismatch")
+             and photo.ai_checked_for == material.material_name)
+    if not fresh:
+        photo_id, name, url = photo.id, material.material_name, photo.url
+        result = photo_check.check(url, material)
+        # The API call can take several seconds: re-read the photo under a
+        # row lock and drop the result if it was replaced/removed meanwhile.
+        db.session.commit()
+        photo = db.session.get(MaterialPhoto, photo_id, with_for_update=True, populate_existing=True)
+        if photo is None or photo.url != url:
+            db.session.rollback()
+            raise APIError("The photo changed while it was being checked - run the check again", 409)
+        for key, value in result.items():
+            setattr(photo, key, value)
+        photo.ai_checked_for = name
+        photo.ai_checked_at = db.func.now()
+        db.session.commit()
+    db.session.refresh(material)
+    return jsonify(material=material.to_dict())
+
+
+@wo_bp.patch("/<int:wo_id>/materials/<int:material_id>/photo/review")
+@permission_required("work_orders:review_photos")
+def review_material_photo(wo_id, material_id):
+    """PATCH .../photo/review  {"decision": "Approved" | "Rejected" | null, "note"?}
+    The supervisor's own judgement of the photo (null clears it). Recorded
+    and audited; it doesn't change costs or status."""
+    _require_photos()
+    work_order = _load_work_order(wo_id, lock=True)
+    material = _load_material(work_order, material_id)
+    photo = _load_photo(material)
+    data = get_json_body()
+    reject_unknown_fields(data, {"decision", "note"})
+    if "decision" not in data:
+        raise APIError("Missing required field(s): decision", 400)
+    decision = data["decision"]
+    if decision is not None:
+        validate_choice(decision, REVIEW_STATUSES, "decision")
+    user = current_user()
+    photo.review_status = decision
+    photo.review_note = clean_str(data.get("note"), "note", 255) if decision else None
+    photo.reviewed_by = user.id if decision else None
+    photo.reviewed_at = db.func.now() if decision else None
+    verb = decision.lower() if decision else "cleared the review of"
+    audit.record(user, "material.photo_reviewed", "material", material.id, wo_label(work_order),
+                 f"{user.full_name} {verb} the photo of {material.material_name} on {wo_label(work_order)}",
+                 {"work_order_id": work_order.id, "decision": decision, "note": photo.review_note,
+                  "ai_status": photo.ai_status})
+    db.session.commit()
+    db.session.refresh(material)
+    return jsonify(material=material.to_dict())
+
+
+@wo_bp.delete("/<int:wo_id>/materials/<int:material_id>/photo")
+@permission_required("work_orders:view")
+def delete_material_photo(wo_id, material_id):
+    """DELETE .../photo - remove the photo (same rules as editing the material)."""
+    _require_photos()
+    work_order = _load_for_costs(wo_id)
+    material = _load_material(work_order, material_id)
+    photo = _load_photo(material)
+    public_id = photo.public_id
+    db.session.delete(photo)
+    user = current_user()
+    audit.record(user, "material.photo_removed", "material", material.id, wo_label(work_order),
+                 f"{user.full_name} removed the photo of {material.material_name} from {wo_label(work_order)}",
+                 {"work_order_id": work_order.id})
+    db.session.commit()
+    photo_storage.destroy_quietly(public_id)
+    db.session.refresh(material)
+    return jsonify(material=material.to_dict())

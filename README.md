@@ -125,6 +125,13 @@ Verified and Closed work orders are locked.
 | DELETE | `/api/work-orders/<id>/materials/<mid>` | Admin, Supervisor, assigned technician | Remove a logged material; cost recalculated |
 | GET | `/api/audit-log` | Admin | Activity log. Filters: `actor_id`, `action`, `category`, `entity_type`+`entity_id`, `date_from`/`date_to`, `q`; paging `per_page` + `before_id` |
 | GET | `/api/audit-log/filters` | Admin | Filter options (actions, people in the log) |
+| PUT | `/api/work-orders/<id>/rating` | Admin, Supervisor | `{stars: 1-5, comment?}` rate the technician on a Verified/Closed work order (replaces any earlier rating). Can also be sent as `rating` + `rating_comment` with the status change to Verified or Closed |
+| GET | `/api/users/<id>/ratings` | Admin, Supervisor; the technician themselves | Average + count. Admin/Supervisor also get the star breakdown and latest ratings with comments; technicians see only their own average |
+| POST | `/api/work-orders/<id>/materials/<mid>/photo` | Admin, Supervisor, assigned technician | multipart field `photo` (JPEG/PNG/WebP/HEIC/GIF, max 10 MB). One photo per material, stored in Cloudinary |
+| POST | `/api/work-orders/<id>/materials/<mid>/photo/check` | as above | Run the experimental AI check (re-runs only if there's no usable result or the material was renamed) |
+| PATCH | `/api/work-orders/<id>/materials/<mid>/photo/review` | Admin, Supervisor | `{decision: "Approved" / "Rejected" / null, note?}`: the supervisor's own call; the AI hint never decides |
+| DELETE | `/api/work-orders/<id>/materials/<mid>/photo` | Admin, Supervisor, assigned technician | Remove the photo |
+| GET | `/api/dashboard/staffing` | Admin, Supervisor | Rule-based staffing estimate (see `backend/staffing.py`) with every figure it used |
 
 Retired machines keep all history and past work orders but can't be used for new work orders.
 Material edits/deletes are allowed only while costs are open (Assigned, In Progress, On Hold, Completed).
@@ -144,6 +151,32 @@ Until it exists the app keeps working, logs a warning, and the Activity Log page
 Entries are written in the same transaction as the change they describe. Logged: work-order
 create/edit/status/delete, labour, material add/edit/delete, machine create/edit/retire/reactivate,
 maintenance notes, user create/edit/deactivate/reactivate, password resets and changes (never the password itself).
+
+### Ratings + material photos (migration 004)
+
+Existing databases need the `technician_ratings` and `material_photos` tables (new installs get them from
+`schema.sql`). Run once as root:
+
+```powershell
+cd "C:\Users\DRAGON\Downloads\Work order"
+$mysql = "C:\Program Files\MySQL\MySQL Server 8.4\bin\mysql.exe"
+Get-Content .\database\migrations\004_ratings_and_photos.sql -Raw | & $mysql -u root -p
+cd backend; .\.venv\Scripts\python.exe scripts\check_db.py     # should list both tables
+```
+
+Until it runs, the app keeps working with ratings and photos switched off (the API answers 503 with
+these instructions).
+
+- **Ratings**: optional 1-5 stars (+ comment) when a supervisor verifies or closes work, or later from
+  the work order. One rating per work order; kept if the work order is deleted. Averages show on the
+  Users page and the technician's profile; technicians see their own average (sidebar + user menu),
+  never individual comments.
+- **Material photos** need Cloudinary credentials, and the **AI check** needs an Anthropic API key. Both are
+  optional (see *Optional environment variables* below). Without Cloudinary the photo field is hidden;
+  without the Anthropic key photos show "No AI check". The AI check is an experimental hint for the
+  supervisor, never a gate: failures, timeouts and refusals all leave the photo reviewable.
+- **Staffing insight** (dashboard, Admin/Supervisor) is a fixed rule over the last 4 weeks of work
+  orders: no model, no external service. The info button on the panel shows the full calculation.
 
 ### Login throttling (migration 003)
 
@@ -199,3 +232,21 @@ from the environment).
 - `FLASK_ENV` should be set to `production` explicitly. If it's ever left unset or misspelled, the
   app now fails safe into the production config (no debug mode, no dev SECRET_KEY, Secure cookies)
   rather than silently running with development defaults.
+- If the Railway database was created before ratings/photos existed, run
+  `database/migrations/004_ratings_and_photos.sql` against it too (as its root user).
+
+### Optional environment variables
+
+Set locally in `backend/.env`, and on Railway in the web service's **Variables** tab (Railway redeploys
+on change). Leaving any of them out just switches that feature off.
+
+| Variable | Feature | Where to get it |
+|---|---|---|
+| `CLOUDINARY_CLOUD_NAME` | Material photos | Cloudinary console -> Dashboard -> Product Environment Credentials |
+| `CLOUDINARY_API_KEY` | Material photos | same place |
+| `CLOUDINARY_API_SECRET` | Material photos | same place (keep secret) |
+| `ANTHROPIC_API_KEY` | Experimental AI photo check | console.anthropic.com -> API Keys |
+| `PHOTO_CHECK_MODEL` | AI check model (optional) | defaults to `claude-opus-5-5` |
+
+Each AI check is one Claude request with one image (about 2,500 input tokens plus a short reasoned
+answer), roughly 1-2 US cents at Claude Opus 5.5 prices. A finished check isn't re-run.

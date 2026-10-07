@@ -5,9 +5,9 @@ import { api } from "../api.js";
 import { applyMorph, captureMorph, collapseRow, motionOK, renderRows, skeletonBlock, skeletonRows, wait } from "../motion.js";
 import { can, isTechnician } from "../session.js";
 import {
-  check, clearErrors, collect, confirmDialog, debounce, emptyRow, errorRow, errorState, esc, field, fmt,
-  formValues, icons, openModal, option, priorityMeter, progressBar,
-  setPage, showErrors, showServerError, statusBadge, toast, todayIso, withBusy,
+  check, clearErrors, collect, confirmDialog, debounce, emptyRow, emptyState, errorRow, errorState, esc, field, fmt,
+  formValues, iconBadge, icons, initials, openModal, option, priorityMeter, progressBar, ratingSummary,
+  setPage, showErrors, showServerError, starPicker, stars, statusBadge, toast, todayIso, withBusy, wireStarPicker,
 } from "../ui.js";
 
 const STATUSES = ["Pending", "Assigned", "In Progress", "On Hold", "Completed", "Verified", "Closed"];
@@ -19,6 +19,84 @@ const PROGRESS_STATUSES = ["Assigned", "In Progress", "On Hold"];
 const REASSIGN_STATUSES = ["Pending", "Assigned", "In Progress", "On Hold"];
 const COST_STATUSES = ["Assigned", "In Progress", "On Hold", "Completed"];
 const PIPELINE = ["Pending", "Assigned", "In Progress", "Completed", "Verified", "Closed"];
+const FINISHED = ["Completed", "Verified", "Closed"];
+const RATABLE = ["Verified", "Closed"];               // mirrors backend/ratings.py
+const AI_FINAL = ["consistent", "unclear", "mismatch"];
+const PHOTO_MAX_EDGE = 1600;                           // px; photos are shrunk in the browser before upload
+const PHOTO_MAX_BYTES = 10 * 1024 * 1024;
+
+const assigneeCell = (t) => (t
+  ? `<span class="person person--inline"><span class="avatar avatar--xs" aria-hidden="true">${esc(initials(t.full_name))}</span>${esc(t.full_name)}</span>`
+  : '<span class="chip chip--amber">Unassigned</span>');
+
+function dueCell(wo) {
+  if (!wo.due_date) return '<span class="muted">—</span>';
+  const date = `<span class="mono">${fmt.date(wo.due_date)}</span>`;
+  if (wo.is_overdue) {
+    const d = fmt.daysOverdue(wo.due_date);
+    return `<span class="due due--late">${icons.alert}${date}</span><div class="cell-sub due-note">${d} day${d === 1 ? "" : "s"} late</div>`;
+  }
+  if (FINISHED.includes(wo.status)) return `<span class="due due--done">${date}</span>`;
+  const left = -fmt.daysOverdue(wo.due_date);
+  if (left <= 3) {
+    return `<span class="due due--soon">${icons.clock}${date}</span><div class="cell-sub due-note">${left === 0 ? "due today" : `in ${left} day${left === 1 ? "" : "s"}`}</div>`;
+  }
+  return `<span class="due">${date}</span>`;
+}
+
+const AI_CHIPS = {
+  consistent:  ["green", "Looks consistent"],
+  unclear:     ["amber", "AI: unclear"],
+  mismatch:    ["red", "AI: doesn't match"],
+  pending:     ["", "Not checked"],
+  unavailable: ["", "No AI check"],
+  error:       ["", "AI check failed"],
+};
+
+function aiChip(ai, busy = false) {
+  if (busy) return `<span class="chip chip--ai"><span class="spinner spinner--xs"></span>Checking…</span>`;
+  const [tone, label] = AI_CHIPS[ai.status] || AI_CHIPS.pending;
+  return `<span class="chip chip--ai${tone ? ` chip--${tone}` : ""}" title="${esc(ai.note || "Experimental AI hint")}">${icons.sparkle}${esc(label)}</span>`;
+}
+
+function reviewChip(review) {
+  if (review.status === "Approved") return `<span class="chip chip--green chip--icon">${icons.check}Approved</span>`;
+  if (review.status === "Rejected") return `<span class="chip chip--red chip--icon">${icons.x}Rejected</span>`;
+  return "";
+}
+
+/** Shrink a photo to <= PHOTO_MAX_EDGE px JPEG before upload (keeps uploads
+ *  small on site Wi-Fi/mobile data). Falls back to the original file when the
+ *  browser can't decode it (e.g. HEIC on desktop Chrome) - the server accepts it. */
+async function prepareImage(file) {
+  if (!/^image\//.test(file.type) && !/\.(heic|heif)$/i.test(file.name)) {
+    throw new Error("Choose an image file (JPEG, PNG, WebP or HEIC).");
+  }
+  try {
+    const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const scale = Math.min(1, PHOTO_MAX_EDGE / Math.max(bmp.width, bmp.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bmp.width * scale);
+    canvas.height = Math.round(bmp.height * scale);
+    canvas.getContext("2d").drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    if (bmp.close) bmp.close();
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
+    if (blob) return blob;
+  } catch { /* not decodable here - send the original */ }
+  if (file.size > PHOTO_MAX_BYTES) throw new Error("That photo is larger than 10 MB.");
+  return file;
+}
+
+/** Open the OS file/camera picker; resolves with the chosen File (or null). */
+function pickImage() {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.addEventListener("change", () => resolve(input.files[0] || null), { once: true });
+    input.click();
+  });
+}
 
 const EMPTY_FILTERS = { q: "", status: "", priority: "", assignee: "", department: "", overdue: false };
 
@@ -34,6 +112,7 @@ export default {
     let listSeq = 0;
     let detail = null;         // { id, modal }
     let alive = true;
+    const checking = new Set();    // material ids with an AI photo check in flight
 
     applyQuery(query);
 
@@ -100,6 +179,12 @@ export default {
     }));
     table.querySelector("tbody").addEventListener("click", (e) => {
       if (e.target.closest("[data-retry]")) { loadList(); return; }
+      const emptyAct = e.target.closest("[data-empty]");
+      if (emptyAct) {
+        if (emptyAct.dataset.empty === "clear") $("#wo-clear").click();
+        else openForm(null);
+        return;
+      }
       const tr = e.target.closest("tr[data-id]");
       if (tr) location.hash = `#/work-orders/${tr.dataset.id}`;
     });
@@ -186,19 +271,24 @@ export default {
       const filtered = Object.values(state.filters).some(Boolean);
       renderRows(table.querySelector("tbody"), rows.length ? rows.map((wo) => `
         <tr class="clickable${wo.priority === "Critical" && !["Completed", "Verified", "Closed"].includes(wo.status) ? " is-critical" : ""}" data-id="${wo.id}">
-          <td class="mono nowrap">${fmt.woId(wo.id)}</td>
+          <td class="nowrap"><span class="id-chip">${fmt.woId(wo.id)}</span></td>
           <td><div class="cell-title">${esc(wo.title)}</div>
-              <div class="cell-sub"><span class="mono">${esc(wo.machine.machine_code)}</span> · ${esc(wo.machine.name)} · ${esc(wo.category)}</div></td>
+              <div class="cell-sub cell-sub--tags"><span class="code-chip">${esc(wo.machine.machine_code)}</span><span>${esc(wo.machine.name)}</span><span class="cat-tag" data-cat="${esc(wo.category)}">${esc(wo.category)}</span></div></td>
           <td>${priorityMeter(wo.priority, "prio")}</td>
           <td>${statusBadge(wo.status, "status")}</td>
           <td>${progressBar(wo.progress, "progress")}</td>
-          <td class="nowrap">${wo.assigned_technician ? esc(wo.assigned_technician.full_name) : '<span class="chip chip--amber">Unassigned</span>'}</td>
+          <td class="nowrap">${assigneeCell(wo.assigned_technician)}</td>
           <td>${esc(wo.department)}</td>
-          <td class="mono nowrap${wo.is_overdue ? " overdue" : ""}">${fmt.date(wo.due_date)}${wo.is_overdue ? " ▲" : ""}</td>
+          <td class="nowrap">${dueCell(wo)}</td>
           <td class="num">${fmt.money(wo.total_cost)}</td>
         </tr>`).join("")
-        : emptyRow(9, filtered ? "No matching work orders" : "No work orders yet",
-            filtered ? "Try clearing some filters." : (can("work_orders:create") ? "Create the first one with “New work order”." : "")),
+        : emptyRow(9, filtered ? "No matching work orders" : (tech ? "Nothing assigned to you" : "No work orders yet"),
+            filtered ? "Nothing matches these filters - try widening them."
+              : can("work_orders:create") ? "Raise the first work order to start tracking maintenance on your machines."
+              : tech ? "New work appears here as soon as a supervisor assigns it to you." : "",
+            filtered ? "search" : "orders",
+            filtered ? `<button class="btn btn--sm" type="button" data-empty="clear">Clear filters</button>`
+              : can("work_orders:create") ? `<button class="btn btn--accent btn--sm" type="button" data-empty="new">${icons.plus} New work order</button>` : ""),
         { highlight });
 
       const from = p.total ? (p.page - 1) * p.per_page + 1 : 0;
@@ -273,7 +363,13 @@ export default {
       const canEdit = can("work_orders:edit") && !locked;
       const canProgress = (can("work_orders:update_work") || can("work_orders:edit")) && PROGRESS_STATUSES.includes(wo.status);
       const canCosts = can("work_orders:log_costs") && COST_STATUSES.includes(wo.status);
+      const features = wo.features || {};
+      const canAttach = canCosts && features.photos;
+      const photoCol = features.photos || wo.materials.some((m) => m.photo);
+      const matCols = 5 + (photoCol ? 1 : 0) + (canCosts ? 1 : 0);
       const person = (p) => (p ? esc(p.full_name) : '<span class="muted">—</span>');
+      const techRating = wo.assigned_technician && can("users:view_ratings")
+        ? (lookups.technicians.find((t) => t.id === wo.assigned_technician.id) || {}).rating : null;
 
       modal.setEyebrow(`${fmt.woId(wo.id)} · ${wo.category.toUpperCase()}`);
       modal.setTitle(wo.title);
@@ -288,7 +384,9 @@ export default {
             <div class="facts">
               ${fact("Machine", `<span class="mono">${esc(wo.machine.machine_code)}</span> ${esc(wo.machine.name)}`)}
               ${fact("Department", esc(wo.department))}
-              ${fact("Assigned to", wo.assigned_technician ? person(wo.assigned_technician) : '<span class="chip chip--amber">Unassigned</span>')}
+              ${fact("Assigned to", wo.assigned_technician
+                ? `${assigneeCell(wo.assigned_technician)}${techRating ? `<div class="fact__extra">${ratingSummary(techRating)}</div>` : ""}`
+                : '<span class="chip chip--amber">Unassigned</span>')}
               ${fact("Created by", person(wo.created_by))}
               ${fact("Created", `<span class="mono">${fmt.dateTime(wo.created_at)}</span>`)}
               ${fact("Due date", `<span class="mono${wo.is_overdue ? " overdue" : ""}" style="${wo.is_overdue ? "color:var(--red)" : ""}">${fmt.date(wo.due_date)}</span>`)}
@@ -310,10 +408,11 @@ export default {
               </form>` : progressBar(wo.progress, "progress")}
 
             <div class="section-title">Materials used <span class="label">${wo.materials.length} item${wo.materials.length === 1 ? "" : "s"}</span></div>
-            <div class="table-wrap"><table class="data">
-              <thead><tr><th>Material</th><th class="num">Qty</th><th class="num">Unit cost</th><th class="num">Line total</th><th>Logged by</th>${canCosts ? "<th></th>" : ""}</tr></thead>
+            <div class="table-wrap"><table class="data data--materials">
+              <thead><tr><th>Material</th>${photoCol ? "<th>Photo</th>" : ""}<th class="num">Qty</th><th class="num">Unit cost</th><th class="num">Line total</th><th>Logged by</th>${canCosts ? "<th></th>" : ""}</tr></thead>
               <tbody id="d-materials">${wo.materials.length ? wo.materials.map((m) => `
                 <tr data-key="mat-${m.id}" data-material="${m.id}"><td><div class="cell-title">${esc(m.material_name)}</div>${m.part_number ? `<div class="cell-sub mono">${esc(m.part_number)}</div>` : ""}</td>
+                    ${photoCol ? `<td>${photoCell(m, canAttach)}</td>` : ""}
                     <td class="num nowrap">${fmt.num(m.quantity)} ${esc(m.unit)}</td>
                     <td class="num">${fmt.money(m.unit_cost)}</td>
                     <td class="num" data-count-key="line-${m.id}" data-value="${m.line_total}">${fmt.money(m.line_total)}</td>
@@ -322,12 +421,13 @@ export default {
                       <button class="icon-btn icon-btn--sm" type="button" data-mat-act="edit" title="Edit material" aria-label="Edit ${esc(m.material_name)}">${icons.edit}</button>
                       <button class="icon-btn icon-btn--sm icon-btn--danger" type="button" data-mat-act="delete" title="Remove material" aria-label="Remove ${esc(m.material_name)}">${icons.trash}</button>
                     </td>` : ""}</tr>`).join("")
-                : emptyRow(canCosts ? 6 : 5, "No materials logged")}</tbody>
+                : emptyRow(matCols, "No materials logged", canCosts ? "Parts and consumables used on this job appear here." : "", "photo")}</tbody>
             </table></div>
           </div>
 
           <aside>
             ${statusBox(wo)}
+            ${ratingBox(wo)}
             <div class="side-box">
               <div class="side-box__head">Cost</div>
               <div class="side-box__body">
@@ -338,7 +438,7 @@ export default {
                 </table>
               </div>
             </div>
-            ${canCosts ? labourBox(wo) + materialBox() : ""}
+            ${canCosts ? labourBox(wo) + materialBox(features) : ""}
           </aside>
         </div>`, { animate: initial });
       if (snap) applyMorph(modal.body, snap, { format: fmt.money });
@@ -363,7 +463,7 @@ export default {
         if (!form || id === skipFormId) continue;
         drafts[id] = {};
         for (const el of form.elements) {
-          if (el.name && !el.readOnly && el.value !== el.defaultValue) drafts[id][el.name] = el.value;
+          if (el.name && el.type !== "file" && !el.readOnly && el.value !== el.defaultValue) drafts[id][el.name] = el.value;
         }
       }
       return drafts;
@@ -416,6 +516,14 @@ export default {
             ${field({ name: "downtime_hours", label: "Machine downtime (hours)", type: "number", attrs: 'min="0" step="0.25" inputmode="decimal"' })}
             ${field({ name: "remarks", label: "Remarks", type: "textarea", attrs: 'rows="2" maxlength="5000"' })}
           </div>
+          ${canRateIn(wo) ? `<div data-extra="rating" hidden>
+            <div class="rating-ask">
+              <div class="rating-ask__head">${iconBadge("star", "var(--amber)", "xs")}<span>Rate ${esc(wo.assigned_technician.full_name)}'s work <span class="muted">· optional</span></span></div>
+              ${starPicker("rating", wo.rating ? wo.rating.stars : 0)}
+              ${field({ name: "rating_comment", label: "Comment (optional)", type: "textarea", value: wo.rating ? wo.rating.comment || "" : "", attrs: 'rows="2" maxlength="500"',
+                        hint: wo.rating ? `Already rated ${wo.rating.stars}/5 - saving a new rating replaces it.` : "Only supervisors and admins see comments; the technician sees their average." })}
+            </div>
+          </div>` : ""}
           <div class="notice notice--amber" data-extra="rework" hidden style="margin-bottom:12px">Sends the work back to the technician and removes its maintenance-history entry until it's completed again.</div>
           <button class="btn btn--primary btn--block" type="submit">Update status</button>
         </form>`;
@@ -423,6 +531,37 @@ export default {
         body = `<div class="notice">${esc(noTransitionReason(wo))}</div>`;
       }
       return `<div class="side-box"><div class="side-box__head">Status ${statusBadge(wo.status, "status-side")}</div><div class="side-box__body">${body}</div></div>`;
+    }
+
+    function canRateIn(wo) {
+      return can("work_orders:rate") && (wo.features || {}).ratings && wo.assigned_technician;
+    }
+
+    /** Supervisor/admin view of the rating on verified/closed work. */
+    function ratingBox(wo) {
+      if (!(wo.features || {}).ratings || !can("users:view_ratings") || !RATABLE.includes(wo.status) || !wo.assigned_technician) return "";
+      const r = wo.rating;
+      return `<div class="side-box side-box--rating"><div class="side-box__head">Technician rating ${r ? `<span class="mono muted">${r.stars}/5</span>` : '<span class="chip">Not rated</span>'}</div>
+        <div class="side-box__body">
+          ${r ? `<div class="rating-card">${stars(r.stars, { size: "lg" })}
+                  ${r.comment ? `<blockquote class="rating-card__comment">${esc(r.comment)}</blockquote>` : ""}
+                  <div class="rating-card__by muted">by ${esc(r.rated_by ? r.rated_by.full_name : "—")} · <span class="mono">${fmt.date(r.updated_at)}</span></div></div>`
+              : `<div class="rating-card rating-card--empty">${stars(0, { size: "lg" })}<p class="muted">${esc(wo.assigned_technician.full_name)} hasn't been rated for this job.</p></div>`}
+          ${can("work_orders:rate") ? `<button class="btn btn--sm btn--block" type="button" data-act="rate">${icons.star} ${r ? "Change rating" : "Rate technician"}</button>` : ""}
+        </div></div>`;
+    }
+
+    function photoCell(m, canAttach) {
+      const p = m.photo;
+      if (!p) {
+        return canAttach
+          ? `<button class="photo-add" type="button" data-mat-act="photo" title="Attach a photo" aria-label="Attach a photo of ${esc(m.material_name)}">${icons.camera}<span>Add</span></button>`
+          : '<span class="muted">—</span>';
+      }
+      return `<div class="photo-cell">
+        <button class="photo-thumb" type="button" data-mat-act="view-photo" title="View photo" aria-label="View photo of ${esc(m.material_name)}">
+          <img src="${esc(p.thumb_url)}" alt="" loading="lazy" width="44" height="44"></button>
+        <div class="photo-flags">${aiChip(p.ai_check, checking.has(m.id))}${reviewChip(p.review)}</div></div>`;
     }
 
     function noTransitionReason(wo) {
@@ -449,7 +588,7 @@ export default {
         </form></div></div>`;
     }
 
-    function materialBox() {
+    function materialBox(features) {
       return `<div class="side-box"><div class="side-box__head">Add material</div><div class="side-box__body">
         <form id="d-material" novalidate>
           <div class="form__error" role="alert"></div>
@@ -460,6 +599,14 @@ export default {
             ${field({ name: "unit_cost", label: "Unit cost", type: "number", required: true, attrs: 'min="0" step="0.01" inputmode="decimal"' })}
             ${field({ name: "part_number", label: "Part no.", attrs: 'maxlength="60"' })}
           </div>
+          ${features.photos ? `<div class="field">
+            <span class="field__label">Photo <span class="muted">· optional</span></span>
+            <label class="file-pick" for="d-photo">${icons.camera}<span data-file-label>Take or choose a photo</span></label>
+            <input id="d-photo" name="photo" type="file" accept="image/*" class="visually-hidden">
+            <div class="field__hint">${features.photo_ai_check
+              ? "Your supervisor sees it with an experimental AI hint on whether it matches the material name."
+              : "Your supervisor sees it with the material."}</div>
+          </div>` : ""}
           <datalist id="d-units"><option value="pcs"><option value="kg"><option value="L"><option value="m"><option value="set"><option value="box"></datalist>
           <button class="btn btn--block" type="submit">Add material</button>
         </form></div></div>`;
@@ -473,8 +620,11 @@ export default {
       // Status
       const statusForm = body.querySelector("#d-status");
       if (statusForm) {
+        const ratingBlock = statusForm.querySelector('[data-extra="rating"]');
+        if (ratingBlock) wireStarPicker(ratingBlock);
         const sync = () => {
           const to = statusForm.elements.status.value;
+          if (ratingBlock) ratingBlock.hidden = !RATABLE.includes(to);
           statusForm.querySelector('[data-extra="assign"]').hidden = !(to === "Assigned" && !wo.assigned_technician);
           statusForm.querySelector('[data-extra="notes"]').hidden = !["Completed", "Verified"].includes(to);
           statusForm.querySelector('[data-extra="rework"]').hidden = !(wo.status === "Completed" && to === "In Progress");
@@ -492,7 +642,14 @@ export default {
             assigned_technician_id: [needsTech ? check.required(v.assigned_technician_id, "Technician") : ""],
             downtime_hours: [notes ? check.decimal(v.downtime_hours, { min: 0, max: 999999 }) : ""],
           });
+          const picked = ratingBlock && !ratingBlock.hidden ? statusForm.querySelector('input[name="rating"]:checked') : null;
+          if (ratingBlock && !ratingBlock.hidden && !picked && v.rating_comment) errors.rating_comment = "Pick 1-5 stars to go with the comment";
           if (!showErrors(statusForm, errors)) return;
+          if (picked) {
+            const n = Number(picked.value), comment = v.rating_comment || null;
+            const same = wo.rating && wo.rating.stars === n && (wo.rating.comment || null) === comment;
+            if (!same) { payload.rating = n; if (comment) payload.rating_comment = comment; }
+          }
           if (needsTech) payload.assigned_technician_id = Number(v.assigned_technician_id);
           if (notes) {
             if (v.work_performed) payload.work_performed = v.work_performed;
@@ -502,7 +659,7 @@ export default {
           withBusy(statusForm.querySelector("[type=submit]"), async () => {
             try {
               await api(`/work-orders/${wo.id}/status`, { method: "PATCH", body: payload });
-              await after(`${fmt.woId(wo.id)} → ${v.status}`, "d-status");
+              await after(`${fmt.woId(wo.id)} → ${v.status}${payload.rating ? ` · rated ${payload.rating}/5` : ""}`, "d-status");
             } catch (err) { showServerError(statusForm, err); }
           });
         });
@@ -547,8 +704,18 @@ export default {
         });
       }
 
+      // Rating (verified/closed work)
+      const rateBtn = body.querySelector('[data-act="rate"]');
+      if (rateBtn) rateBtn.addEventListener("click", () => openRatingForm(wo, after));
+
       // Materials
       const materialForm = body.querySelector("#d-material");
+      const photoInput = materialForm && materialForm.elements.photo;
+      if (photoInput) photoInput.addEventListener("change", () => {
+        const f = photoInput.files[0];
+        materialForm.querySelector("[data-file-label]").textContent = f ? f.name : "Take or choose a photo";
+        materialForm.querySelector(".file-pick").classList.toggle("has-file", Boolean(f));
+      });
       if (materialForm) {
         materialForm.addEventListener("submit", (e) => {
           e.preventDefault();
@@ -562,10 +729,13 @@ export default {
           if (!showErrors(materialForm, errors)) return;
           const payload = { material_name: v.material_name, quantity: Number(v.quantity), unit_cost: Number(v.unit_cost), unit: v.unit || "pcs" };
           if (v.part_number) payload.part_number = v.part_number;
+          const photo = photoInput ? photoInput.files[0] : null;
           withBusy(materialForm.querySelector("[type=submit]"), async () => {
             try {
-              await api(`/work-orders/${wo.id}/materials`, { method: "POST", body: payload });
+              const res = await api(`/work-orders/${wo.id}/materials`, { method: "POST", body: payload });
               await after(`Added ${v.quantity} ${payload.unit} ${v.material_name}`, "d-material");
+              // The material is saved; the photo follows (a failed upload doesn't undo the material).
+              if (photo) attachPhoto(wo.id, res.material, photo, wo.features);
             } catch (err) { showServerError(materialForm, err); }
           });
         });
@@ -580,6 +750,12 @@ export default {
         const material = wo.materials.find((m) => String(m.id) === tr.dataset.material);
         if (!material) return;
         if (btn.dataset.matAct === "edit") { openMaterialForm(wo, material, after); return; }
+        if (btn.dataset.matAct === "view-photo") { openPhotoViewer(wo, material); return; }
+        if (btn.dataset.matAct === "photo") {
+          const file = await pickImage();
+          if (file) attachPhoto(wo.id, material, file, wo.features);
+          return;
+        }
 
         const ok = await confirmDialog({
           title: `Remove ${material.material_name}?`, danger: true, confirmLabel: "Remove material",
@@ -612,6 +788,209 @@ export default {
           loadList();
         } catch (err) { toast(err.message, "error"); }
       });
+    }
+
+    // ------------------------------------------------------------ rating form
+
+    function openRatingForm(wo, after) {
+      const r = wo.rating;
+      const modal = openModal({
+        title: r ? "Change rating" : "Rate technician",
+        eyebrow: `${fmt.woId(wo.id)} · ${wo.assigned_technician.full_name}`,
+        body: `<form class="form" novalidate>
+          <div class="form__error" role="alert"></div>
+          <p class="muted" style="margin-top:0">How well was “${esc(wo.title)}” carried out? Ratings feed into ${esc(wo.assigned_technician.full_name)}'s average on the Users page; they see their average, not individual comments.</p>
+          <div class="field"><span class="field__label">Rating *</span>${starPicker("stars", r ? r.stars : 0)}<div class="field__error" data-for="stars"></div></div>
+          ${field({ name: "comment", label: "Comment (optional)", type: "textarea", value: r ? r.comment || "" : "", attrs: 'rows="3" maxlength="500"' })}
+        </form>`,
+        foot: `<button class="btn" data-close>Cancel</button><button class="btn btn--primary" data-save>${icons.star} Save rating</button>`,
+      });
+      const form = modal.body.querySelector("form");
+      wireStarPicker(form);
+      const save = () => {
+        clearErrors(form);
+        const picked = form.querySelector('input[name="stars"]:checked');
+        if (!picked) { form.querySelector('[data-for="stars"]').textContent = "Pick 1-5 stars"; return; }
+        const comment = form.elements.comment.value.trim() || null;
+        withBusy(modal.foot.querySelector("[data-save]"), async () => {
+          try {
+            await api(`/work-orders/${wo.id}/rating`, { method: "PUT", body: { stars: Number(picked.value), comment } });
+            modal.close();
+            await after(`Rated ${wo.assigned_technician.full_name} ${picked.value}/5`, "d-rating");
+          } catch (err) { showServerError(form, err); }
+        });
+      };
+      modal.foot.querySelector("[data-save]").addEventListener("click", save);
+      form.addEventListener("submit", (e) => { e.preventDefault(); save(); });
+    }
+
+    // ------------------------------------------------------------ material photos
+
+    const refreshIfOpen = async (woId) => {
+      if (alive && detail && detail.id === woId && !detail.modal.isClosed) await refreshDetail();
+    };
+
+    /** Upload a photo for a material, then (if enabled) run the AI check in the
+     *  background. Neither step blocks anything else on the page. */
+    async function attachPhoto(woId, material, file, features = {}) {
+      let image;
+      try { image = await prepareImage(file); } catch (err) { toast(err.message, "error"); return; }
+      const data = new FormData();
+      data.append("photo", image, image.name || "photo.jpg");
+      toast(`Uploading photo of ${material.material_name}…`, "warn");
+      try {
+        await api(`/work-orders/${woId}/materials/${material.id}/photo`, { method: "POST", body: data });
+      } catch (err) {
+        toast(`Photo not saved: ${err.message}`, "error");
+        return;
+      }
+      if (!features.photo_ai_check) {
+        toast("Photo attached");
+        await refreshIfOpen(woId);
+        return;
+      }
+      checking.add(material.id);
+      toast("Photo attached - running the AI check");
+      await refreshIfOpen(woId);
+      await runPhotoCheck(woId, material.id);
+    }
+
+    async function runPhotoCheck(woId, materialId) {
+      checking.add(materialId);
+      try {
+        const res = await api(`/work-orders/${woId}/materials/${materialId}/photo/check`, { method: "POST" });
+        return res.material;
+      } catch (err) {
+        toast(`AI check didn't run: ${err.message}`, "warn");
+        return null;
+      } finally {
+        checking.delete(materialId);
+        await refreshIfOpen(woId);
+      }
+    }
+
+    function aiPanel(ai, m, busy) {
+      const tone = { consistent: "green", unclear: "amber", mismatch: "red" }[ai.status] || "grey";
+      const fallback = {
+        pending: "Not checked yet.",
+        unavailable: "AI check is not configured on this server.",
+        error: "The AI check couldn't run.",
+      }[ai.status] || "";
+      const stale = AI_FINAL.includes(ai.status) && ai.checked_for && ai.checked_for !== m.material_name;
+      return `<section class="ai-hint ai-hint--${tone}" aria-live="polite">
+        <div class="ai-hint__head">${iconBadge("sparkle", `var(--${tone === "grey" ? "grey" : tone})`, "sm")}
+          <b>AI hint</b><span class="chip">Experimental</span>
+          ${ai.checked_at ? `<span class="ai-hint__when mono muted">${fmt.dateTime(ai.checked_at)}</span>` : ""}</div>
+        <p class="ai-hint__note">${busy ? '<span class="spinner spinner--xs"></span> Checking the photo…' : esc(ai.note || fallback)}</p>
+        ${ai.detail && !busy ? `<p class="ai-hint__detail">${esc(ai.detail)}</p>` : ""}
+        ${stale ? `<p class="ai-hint__detail">Checked against “${esc(ai.checked_for)}” - the material has been renamed since.</p>` : ""}
+        <p class="ai-hint__fine">An automated comparison of the photo with the logged name. It can be wrong in either direction, can't read every label or check quantities, and never approves anything - use your own judgement.</p>
+      </section>`;
+    }
+
+    /** Full-size photo with the AI hint, the supervisor's review and photo actions. */
+    function openPhotoViewer(wo, material) {
+      const features = wo.features || {};
+      const canReview = can("work_orders:review_photos");
+      const canChange = can("work_orders:log_costs") && COST_STATUSES.includes(wo.status);
+      let m = material;
+      const modal = openModal({ title: m.material_name, eyebrow: `${fmt.woId(wo.id)} · MATERIAL PHOTO`, body: "", foot: "" });
+      modal.el.querySelector(".modal").classList.add("modal--photo");
+
+      const render = () => {
+        const p = m.photo;
+        if (!p) {
+          modal.setBody(emptyState("No photo", "This photo has been removed.", "photo"));
+          modal.setFoot(`<button class="btn" data-close>Close</button>`);
+          return;
+        }
+        const ai = p.ai_check, review = p.review, busy = checking.has(m.id);
+        const canCheck = features.photo_ai_check && (can("work_orders:log_costs") || canReview)
+          && !busy && !(AI_FINAL.includes(ai.status) && ai.checked_for === m.material_name);
+        modal.setBody(`
+          <div class="photo-view">
+            <figure class="photo-view__img"><a href="${esc(p.url)}" target="_blank" rel="noopener" title="Open full size">
+              <img src="${esc(p.url)}" alt="Photo of ${esc(m.material_name)}"></a>
+              <figcaption class="muted">${p.uploaded_by ? `By ${esc(p.uploaded_by.full_name)} · ` : ""}<span class="mono">${fmt.dateTime(p.uploaded_at)}</span>${p.width ? ` · <span class="mono">${p.width}×${p.height}</span>` : ""}</figcaption>
+            </figure>
+            <div class="photo-view__side">
+              <div class="photo-view__logged">
+                <span class="label">Logged as</span>
+                <div class="cell-title">${esc(m.material_name)}</div>
+                <div class="muted"><span class="mono">${fmt.num(m.quantity)} ${esc(m.unit)}</span>${m.part_number ? ` · part <span class="mono">${esc(m.part_number)}</span>` : ""}</div>
+              </div>
+              ${aiPanel(ai, m, busy)}
+              <section class="photo-review">
+                <div class="photo-review__head"><span class="label">${canReview ? "Your review" : "Supervisor review"}</span>${reviewChip(review) || '<span class="chip">Not reviewed</span>'}</div>
+                ${review.status ? `<div class="muted photo-review__by">${review.reviewed_by ? esc(review.reviewed_by.full_name) + " · " : ""}<span class="mono">${fmt.dateTime(review.reviewed_at)}</span></div>` : ""}
+                ${review.note ? `<blockquote class="rating-card__comment">${esc(review.note)}</blockquote>` : ""}
+                ${canReview ? `<form class="photo-review__form" novalidate>
+                  <div class="form__error" role="alert"></div>
+                  <textarea name="note" rows="2" maxlength="255" placeholder="Note (optional) - e.g. why it was rejected" aria-label="Review note">${esc(review.note || "")}</textarea>
+                  <div class="photo-review__actions">
+                    <button class="btn btn--sm btn--approve" type="button" data-review="Approved">${icons.check} Approve</button>
+                    <button class="btn btn--sm btn--danger" type="button" data-review="Rejected">${icons.x} Reject</button>
+                    ${review.status ? `<button class="btn btn--sm btn--ghost" type="button" data-review="">Clear</button>` : ""}
+                  </div>
+                  <div class="field__hint">Your decision is recorded and audited. The AI hint has no effect on it.</div>
+                </form>` : ""}
+              </section>
+            </div>
+          </div>`, { animate: true });
+        modal.setFoot(`
+          ${canChange ? `<button class="btn btn--danger left" type="button" data-photo="remove">${icons.trash} Remove</button>
+                         <button class="btn" type="button" data-photo="replace">${icons.camera} Replace</button>` : ""}
+          ${canCheck ? `<button class="btn" type="button" data-photo="check">${icons.sparkle} ${ai.status === "pending" ? "Run AI check" : "Re-run AI check"}</button>` : ""}
+          <button class="btn btn--primary" data-close>Close</button>`);
+      };
+
+      const reload = () => refreshIfOpen(wo.id);   // keeps the materials table behind in step
+
+      modal.el.addEventListener("click", async (e) => {
+        const reviewBtn = e.target.closest("[data-review]");
+        if (reviewBtn) {
+          const form = modal.body.querySelector(".photo-review__form");
+          clearErrors(form);
+          const decision = reviewBtn.dataset.review || null;
+          await withBusy(reviewBtn, async () => {
+            try {
+              const res = await api(`/work-orders/${wo.id}/materials/${m.id}/photo/review`, {
+                method: "PATCH", body: { decision, note: decision ? form.elements.note.value.trim() || null : null },
+              });
+              m = res.material;
+              toast(decision ? `Photo ${decision.toLowerCase()}` : "Review cleared");
+              render();
+              reload();
+            } catch (err) { showServerError(form, err); }
+          });
+          return;
+        }
+        const act = e.target.closest("[data-photo]");
+        if (!act) return;
+        if (act.dataset.photo === "check") {
+          checking.add(m.id);
+          render();
+          const updated = await runPhotoCheck(wo.id, m.id);
+          if (updated) m = updated;
+          if (!modal.isClosed) render();
+        } else if (act.dataset.photo === "replace") {
+          const file = await pickImage();
+          if (!file) return;
+          modal.close();
+          attachPhoto(wo.id, m, file, features);
+        } else if (act.dataset.photo === "remove") {
+          const ok = await confirmDialog({ title: "Remove this photo?", danger: true, confirmLabel: "Remove photo",
+                                           message: `The photo of ${m.material_name} and its AI hint and review will be deleted. The material itself stays logged.` });
+          if (!ok) return;
+          try {
+            await api(`/work-orders/${wo.id}/materials/${m.id}/photo`, { method: "DELETE" });
+            toast("Photo removed");
+            modal.close();
+            reload();
+          } catch (err) { toast(err.message, "error"); }
+        }
+      });
+      render();
     }
 
     // ------------------------------------------------------------ material edit form

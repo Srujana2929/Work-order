@@ -5,6 +5,7 @@ from sqlalchemy import or_, text
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import audit
+import ratings
 from auth.rbac import current_user, login_required
 from auth.tokens import clear_auth_cookie, create_access_token, set_auth_cookie
 from errors import APIError
@@ -137,8 +138,14 @@ def logout():
 @auth_bp.get("/me")
 @login_required
 def me():
-    """GET /api/auth/me - the logged-in user."""
-    return jsonify(user=current_user().to_dict())
+    """GET /api/auth/me - the logged-in user (technicians: plus their own
+    rating average, or null before migration 004)."""
+    user = current_user()
+    body = user.to_dict()
+    if user.role == "Technician":
+        summary = ratings.summaries([user.id])
+        body["rating"] = summary[user.id] if summary else None
+    return jsonify(user=body)
 
 
 @auth_bp.post("/change-password")

@@ -104,7 +104,7 @@ el("login-reveal").addEventListener("click", () => {
 
 el("login-forgot").addEventListener("click", (e) => {
   e.preventDefault();
-  toast("Password resets are handled by an administrator - contact your Admin to reset it.");
+  toast("Password resets are handled by an administrator - contact your Admin, or support@workorder.app.");
 });
 
 el("login-form").addEventListener("submit", (e) => {
@@ -167,6 +167,7 @@ function renderRail() {
   el("rail-user").innerHTML = `
     <div class="rail__user-name"><span class="avatar avatar--rail" aria-hidden="true">${esc(initials(u.full_name))}</span>${esc(u.full_name)}</div>
     <div class="rail__user-meta"><span class="role-tag">${esc(u.role)}</span> ${esc(u.username)}${u.department ? " · " + esc(u.department) : ""}</div>
+    ${u.role === "Technician" ? `<div class="rail__rating" data-my-rating hidden></div>` : ""}
     <div class="rail__user-actions">
       <button type="button" data-action="password">Password</button>
       <button type="button" data-action="logout">Sign out</button>

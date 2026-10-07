@@ -34,6 +34,7 @@ PERMISSIONS = {
     # Users
     "users:manage":            set(),                   # create/edit/deactivate users
     "users:list_technicians":  {SUPERVISOR},            # to pick an assignee
+    "users:view_ratings":      {SUPERVISOR},            # individual ratings + comments (self: average only)
     # Work orders
     "work_orders:view":        {SUPERVISOR, TECHNICIAN},  # technicians: own only
     "work_orders:create":      {SUPERVISOR},
@@ -43,6 +44,8 @@ PERMISSIONS = {
     "work_orders:log_costs":   {SUPERVISOR, TECHNICIAN},  # materials + labour; technicians: own only
     "work_orders:verify":      {SUPERVISOR},            # also: send completed work back for rework
     "work_orders:close":       {SUPERVISOR},
+    "work_orders:rate":        {SUPERVISOR},            # rate the technician on verified/closed work
+    "work_orders:review_photos": {SUPERVISOR},          # approve/reject material photos
     "work_orders:delete":      set(),                   # Admin only
     # Machines & maintenance history
     "machines:view":           {SUPERVISOR, TECHNICIAN},  # registry + history
@@ -50,6 +53,7 @@ PERMISSIONS = {
     "machines:log_notes":      {SUPERVISOR, TECHNICIAN},  # manual history notes
     # Dashboard (technicians see figures for their own work only)
     "dashboard:view":          {SUPERVISOR, TECHNICIAN},
+    "dashboard:staffing":      {SUPERVISOR},            # staffing insight panel
     # Activity / audit log
     "audit:view":              set(),                   # Admin only
 }
